@@ -1479,12 +1479,24 @@ function resetForm() {
 
 document.getElementById("report-date").value = localDateString();
 document.getElementById("retry-connection-button").addEventListener("click", startSharedWorkspace);
-document.getElementById("copy-share-link-button").addEventListener("click", async () => {
+document.getElementById("share-workspace-button").addEventListener("click", async () => {
   try {
-    await navigator.clipboard.writeText(window.location.href);
-    showToast("Shared workspace link copied.");
+    const storageKey = "turnaround-workspace-share-token-v1";
+    let shareToken = localStorage.getItem(storageKey);
+    if (!shareToken) {
+      const randomBytes = crypto.getRandomValues(new Uint8Array(24));
+      shareToken = btoa(String.fromCharCode(...randomBytes))
+        .replace(/\+/g, "-")
+        .replace(/\//g, "_")
+        .replace(/=+$/g, "");
+      localStorage.setItem(storageKey, shareToken);
+    }
+    const shareUrl = new URL(window.location.href);
+    shareUrl.hash = `share=${shareToken}`;
+    await navigator.clipboard.writeText(shareUrl.toString());
+    showToast("Share Workspace link copied. Anyone can open it and edit shared data.");
   } catch (error) {
-    console.error("Could not copy the shared workspace link.", error);
+    console.error("Could not create or copy the shared workspace link.", error);
     showToast("Could not copy the link. Copy the page address from your browser.");
   }
 });
