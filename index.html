@@ -10,15 +10,14 @@
   <script src="supabase-config.js"></script>
 </head>
 <body>
-  <section id="auth-gate" class="auth-gate" aria-labelledby="auth-title">
-    <form id="auth-form" class="auth-card">
+  <section id="workspace-gate" class="workspace-gate" aria-labelledby="workspace-title">
+    <div class="workspace-card">
       <p class="eyebrow">TEAM WORKSPACE</p>
-      <h1 id="auth-title">Sign in to Daily Report</h1>
-      <p>Enter your invited team email. Supabase will send you a secure sign-in link.</p>
-      <label class="field"><span>Team email</span><input id="auth-email" type="email" autocomplete="email" required></label>
-      <button id="auth-submit" class="button button-primary button-block" type="submit">Send sign-in link</button>
-      <p id="auth-feedback" class="auth-feedback" role="status" aria-live="polite"></p>
-    </form>
+      <h1 id="workspace-title">Opening shared Daily Report</h1>
+      <p>Connecting to the workspace. Anyone with this link can view and edit shared data.</p>
+      <p id="workspace-feedback" class="workspace-feedback" role="status" aria-live="polite">Connecting…</p>
+      <button id="retry-connection-button" class="button button-primary button-block" type="button">Retry connection</button>
+    </div>
   </section>
   <header class="topbar" id="app-header" hidden>
     <a class="brand" href="#" aria-label="Turnaround Daily Report home">
@@ -30,7 +29,7 @@
       <span id="cloud-status">Connecting to shared workspace</span>
       <span class="topbar-divider"></span>
       <span id="today-label"></span>
-      <button class="button button-quiet button-small" id="sign-out-button" type="button">Sign out</button>
+      <button class="button button-quiet button-small" id="copy-share-link-button" type="button">Copy share link</button>
     </div>
   </header>
 

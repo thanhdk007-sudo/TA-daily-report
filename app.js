@@ -14,7 +14,7 @@ const preparerNames = ["ThanhDK", "ThienHV", "TruongTX", "AnhTT", "DongBM", "Min
 const activitySections = ["2A", "2B", "2C", "3A", "2D", "2E", "5T", "0P", "CTU", "TFJ"];
 let toastTimer;
 const editingEquipmentTags = new Set();
-let currentUser = null;
+let cloudReady = false;
 let cloudWriteQueue = Promise.resolve();
 let realtimeChannel = null;
 
@@ -47,20 +47,20 @@ function setCloudStatus(message) {
   document.getElementById("cloud-status").textContent = message;
 }
 
-function showAuthFeedback(message, isError = false) {
-  const feedback = document.getElementById("auth-feedback");
+function showWorkspaceFeedback(message, isError = false) {
+  const feedback = document.getElementById("workspace-feedback");
   feedback.textContent = message;
   feedback.classList.toggle("error", isError);
 }
 
 function queueCloudWrite(operation) {
-  if (!currentUser) return;
+  if (!cloudReady) return;
   setCloudStatus("Saving shared data…");
   cloudWriteQueue = cloudWriteQueue.then(async () => {
-    if (!currentUser) return;
+    if (!cloudReady) return;
     const error = await operation();
     if (error) throw error;
-    setCloudStatus(`Shared · ${currentUser.email}`);
+    setCloudStatus("Shared workspace · anyone with link");
   }).catch(error => {
     console.error("Could not sync shared turnaround data.", error);
     setCloudStatus("Sync error · check connection");
@@ -95,15 +95,6 @@ function mergeByKey(remote, local, getKey) {
 }
 
 async function loadSharedWorkspace() {
-  const membershipResult = await supabaseClient.from("turnaround_team_members")
-    .select("email")
-    .eq("email", String(currentUser?.email || "").toLowerCase())
-    .maybeSingle();
-  if (membershipResult.error) throw membershipResult.error;
-  if (!membershipResult.data) {
-    throw new Error("The signed-in email is not allowlisted for this turnaround workspace.");
-  }
-
   const results = await Promise.all([
     supabaseClient.from("turnaround_reports").select("id,data"),
     supabaseClient.from("turnaround_equipment_actuals").select("id,data"),
@@ -168,26 +159,14 @@ async function loadSharedWorkspace() {
 }
 
 function showApplication() {
-  document.getElementById("auth-gate").hidden = true;
+  document.getElementById("workspace-gate").hidden = true;
   document.getElementById("app-header").hidden = false;
   document.getElementById("app-main").hidden = false;
   document.getElementById("toast").hidden = false;
 }
 
-function hideApplication() {
-  currentUser = null;
-  if (realtimeChannel) {
-    supabaseClient.removeChannel(realtimeChannel);
-    realtimeChannel = null;
-  }
-  document.getElementById("auth-gate").hidden = false;
-  document.getElementById("app-header").hidden = true;
-  document.getElementById("app-main").hidden = true;
-  document.getElementById("toast").hidden = true;
-}
-
 async function refreshSharedWorkspace(payload, tableName) {
-  if (!currentUser) return;
+  if (!cloudReady) return;
   try {
     if (payload?.eventType === "DELETE") {
       if (tableName === "turnaround_reports" || tableName === "turnaround_equipment_actuals") {
@@ -210,7 +189,7 @@ async function refreshSharedWorkspace(payload, tableName) {
     renderHistory();
     renderSavedDateReports();
     renderOverview();
-    setCloudStatus(`Shared · ${currentUser.email}`);
+    setCloudStatus("Shared workspace · anyone with link");
   } catch (error) {
     console.error("Could not refresh shared turnaround data.", error);
     setCloudStatus("Sync error · check connection");
@@ -237,31 +216,29 @@ function subscribeToSharedWorkspace() {
     });
 }
 
-async function startSharedWorkspace(session) {
-  if (currentUser?.id === session.user.id) return;
-  currentUser = session.user;
-  document.getElementById("auth-submit").disabled = true;
-  showAuthFeedback("Connecting to shared team data…");
+async function startSharedWorkspace() {
+  if (cloudReady) return;
+  const retryButton = document.getElementById("retry-connection-button");
+  retryButton.disabled = true;
+  showWorkspaceFeedback("Connecting to shared data…");
   try {
     await loadSharedWorkspace();
+    cloudReady = true;
     showApplication();
     document.getElementById("today-label").textContent = `${new Date().toLocaleDateString("en", { weekday: "short" })} · ${formatDate(localDateString())}`;
     document.getElementById("report-date").value = localDateString();
     renderDailyRows({ overallActivities: [], todayActivities: [], tomorrowActivities: [], issues: [] });
     addPackage();
     renderHistory();
-    setCloudStatus(`Shared · ${currentUser.email}`);
+    setCloudStatus("Shared workspace · anyone with link");
     subscribeToSharedWorkspace();
-    showAuthFeedback("");
+    showWorkspaceFeedback("");
   } catch (error) {
     console.error("Could not open shared turnaround workspace.", error);
-    currentUser = null;
-    const message = String(error?.message || "").includes("not allowlisted")
-      ? "Your email is not on the team allowlist. Ask the workspace owner to add and invite you."
-      : "Could not connect to shared data. Confirm the Supabase setup has been run and team access is enabled.";
-    showAuthFeedback(message, true);
+    cloudReady = false;
+    showWorkspaceFeedback("Could not connect to shared data. Confirm the Supabase setup has been run and public link access is enabled.", true);
   } finally {
-    document.getElementById("auth-submit").disabled = false;
+    retryButton.disabled = false;
   }
 }
 
@@ -302,7 +279,7 @@ function storeReports(reports) {
   try {
     const previous = readLocalArray(STORAGE_KEY);
     localStorage.setItem(STORAGE_KEY, JSON.stringify(reports));
-    if (currentUser) queueCloudWrite(async () => {
+    if (cloudReady) queueCloudWrite(async () => {
       const previousById = new Map(previous.map(item => [String(item.id), item]));
       const nextById = new Map(reports.map(item => [String(item.id), item]));
       const changed = reports.filter(item => JSON.stringify(previousById.get(String(item.id))) !== JSON.stringify(item));
@@ -343,7 +320,7 @@ function storeEquipmentActuals(actuals) {
   try {
     const previous = readLocalArray(ACTUALS_STORAGE_KEY);
     localStorage.setItem(ACTUALS_STORAGE_KEY, JSON.stringify(actuals));
-    if (currentUser) queueCloudWrite(async () => {
+    if (cloudReady) queueCloudWrite(async () => {
       const previousById = new Map(previous.map(item => [String(item.id), item]));
       const changed = actuals.filter(item => JSON.stringify(previousById.get(String(item.id))) !== JSON.stringify(item));
       if (!changed.length) return null;
@@ -376,7 +353,7 @@ function storeEquipmentOverrides(overrides) {
   try {
     const previous = readLocalArray(EQUIPMENT_OVERRIDES_STORAGE_KEY);
     localStorage.setItem(EQUIPMENT_OVERRIDES_STORAGE_KEY, JSON.stringify(overrides));
-    if (currentUser) queueCloudWrite(async () => {
+    if (cloudReady) queueCloudWrite(async () => {
       const getKey = item => `${normalizeWorkPackage(item.workPackage)}::${item.equipmentTag}`;
       const previousByKey = new Map(previous.map(item => [getKey(item), item]));
       const nextByKey = new Map(overrides.map(item => [getKey(item), item]));
@@ -427,7 +404,7 @@ function storeActivityStatuses(statuses) {
   try {
     const previous = readLocalObject(ACTIVITY_STATUSES_STORAGE_KEY);
     localStorage.setItem(ACTIVITY_STATUSES_STORAGE_KEY, JSON.stringify(statuses));
-    if (currentUser) queueCloudWrite(async () => {
+    if (cloudReady) queueCloudWrite(async () => {
       const changed = Object.entries(statuses)
         .filter(([key, status]) => previous[key] !== status)
         .map(([activity_key, status]) => ({ activity_key, status }));
@@ -1501,38 +1478,15 @@ function resetForm() {
 }
 
 document.getElementById("report-date").value = localDateString();
-document.getElementById("auth-form").addEventListener("submit", async event => {
-  event.preventDefault();
-  if (!supabaseClient) {
-    showAuthFeedback("Supabase configuration is missing. Check supabase-config.js.", true);
-    return;
+document.getElementById("retry-connection-button").addEventListener("click", startSharedWorkspace);
+document.getElementById("copy-share-link-button").addEventListener("click", async () => {
+  try {
+    await navigator.clipboard.writeText(window.location.href);
+    showToast("Shared workspace link copied.");
+  } catch (error) {
+    console.error("Could not copy the shared workspace link.", error);
+    showToast("Could not copy the link. Copy the page address from your browser.");
   }
-  const submit = document.getElementById("auth-submit");
-  submit.disabled = true;
-  showAuthFeedback("Sending sign-in link…");
-  const email = document.getElementById("auth-email").value.trim();
-  const redirectUrl = `${window.location.origin}${window.location.pathname}`;
-  const { error } = await supabaseClient.auth.signInWithOtp({
-    email,
-    options: { shouldCreateUser: false, emailRedirectTo: redirectUrl }
-  });
-  submit.disabled = false;
-  if (error) {
-    console.error("Could not send team sign-in link.", error);
-    showAuthFeedback("Could not send sign-in link. Confirm you have been invited and the redirect URL is allowed in Supabase.", true);
-    return;
-  }
-  showAuthFeedback("Check your email for the secure sign-in link.");
-});
-document.getElementById("sign-out-button").addEventListener("click", async () => {
-  if (!supabaseClient) return;
-  const { error } = await supabaseClient.auth.signOut();
-  if (error) {
-    console.error("Could not sign out.", error);
-    showToast("Could not sign out. Please try again.");
-    return;
-  }
-  hideApplication();
 });
 form.addEventListener("input", updateDashboard);
 form.addEventListener("change", updateDashboard);
@@ -1566,21 +1520,7 @@ document.getElementById("add-tomorrow-activity").addEventListener("click", () =>
 document.getElementById("add-issue").addEventListener("click", () => issueRow());
 
 if (!supabaseClient) {
-  showAuthFeedback("Supabase configuration is missing. Check supabase-config.js.", true);
+  showWorkspaceFeedback("Supabase configuration is missing. Check supabase-config.js.", true);
 } else {
-  supabaseClient.auth.onAuthStateChange((event, session) => {
-    if (event === "SIGNED_OUT") {
-      hideApplication();
-    } else if (session) {
-      setTimeout(() => startSharedWorkspace(session), 0);
-    }
-  });
-  supabaseClient.auth.getSession().then(({ data, error }) => {
-    if (error) {
-      console.error("Could not check Supabase session.", error);
-      showAuthFeedback("Could not connect to Supabase. Check your connection and project settings.", true);
-      return;
-    }
-    if (data.session) startSharedWorkspace(data.session);
-  });
+  startSharedWorkspace();
 }
