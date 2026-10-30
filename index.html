@@ -1,0 +1,271 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#102a43">
+  <title>Turnaround Daily Report</title>
+  <link rel="stylesheet" href="styles.css">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="supabase-config.js"></script>
+</head>
+<body>
+  <section id="auth-gate" class="auth-gate" aria-labelledby="auth-title">
+    <form id="auth-form" class="auth-card">
+      <p class="eyebrow">TEAM WORKSPACE</p>
+      <h1 id="auth-title">Sign in to Daily Report</h1>
+      <p>Enter your invited team email. Supabase will send you a secure sign-in link.</p>
+      <label class="field"><span>Team email</span><input id="auth-email" type="email" autocomplete="email" required></label>
+      <button id="auth-submit" class="button button-primary button-block" type="submit">Send sign-in link</button>
+      <p id="auth-feedback" class="auth-feedback" role="status" aria-live="polite"></p>
+    </form>
+  </section>
+  <header class="topbar" id="app-header" hidden>
+    <a class="brand" href="#" aria-label="Turnaround Daily Report home">
+      <span class="brand-mark">TA</span>
+      <span><strong>TURNAROUND</strong><small>DAILY REPORT</small></span>
+    </a>
+    <div class="topbar-right">
+      <span class="status-dot"></span>
+      <span id="cloud-status">Connecting to shared workspace</span>
+      <span class="topbar-divider"></span>
+      <span id="today-label"></span>
+      <button class="button button-quiet button-small" id="sign-out-button" type="button">Sign out</button>
+    </div>
+  </header>
+
+  <main class="page-shell" id="app-main" hidden>
+    <section class="page-heading">
+      <div>
+        <p class="eyebrow">OPERATIONS CONTROL</p>
+        <h1>Daily report</h1>
+        <p class="heading-copy">A clear, practical handover of today's work, next-shift priorities, and open issues.</p>
+      </div>
+      <div class="heading-actions">
+        <button class="button button-quiet" id="new-report-button" type="button">＋ New report</button>
+        <button class="button button-primary" id="save-report-button" type="button">Save report <span aria-hidden="true">→</span></button>
+      </div>
+    </section>
+
+    <section class="overview-card" aria-labelledby="overview-title">
+      <div class="overview-header">
+        <div>
+          <p class="eyebrow">TURNAROUND OVERVIEW</p>
+          <h2 id="overview-title">Progress S-curve</h2>
+          <p class="overview-copy">Compare planned and actual cumulative progress from saved daily reports.</p>
+        </div>
+        <div class="overview-filters">
+          <label class="field"><span>Work Package</span><select id="overview-work-package"><option value="">Select work package</option><option>MS03 Drum</option><option>MS04 Tower</option></select></label>
+        </div>
+      </div>
+      <div class="overview-stats">
+        <div><span>Saved reports</span><strong id="overview-report-count">0</strong></div>
+        <div><span>Latest report</span><strong id="overview-latest-date">—</strong></div>
+        <div><span>Latest actual</span><strong id="overview-latest-actual">—</strong></div>
+      </div>
+      <div class="chart-wrap" id="curve-chart-wrap">
+        <p class="empty-note">Select a Work Package to view progress.</p>
+      </div>
+      <div class="chart-legend"><span><i class="legend-planned"></i> Planned</span><span><i class="legend-actual"></i> Actual</span><span><i class="legend-today"></i> Today</span><small>Planned weighted by MNT use days · actual weighted from equipment updates</small></div>
+      <details class="actual-entry-panel">
+        <summary class="actual-entry-summary">
+          <div class="actual-entry-heading">
+            <div><h3>Actual progress by equipment</h3><p>Use Edit on an equipment row to update its details and save that equipment individually. Actual completion is saved separately for the selected date.</p></div>
+            <span class="actual-entry-toggle">Show equipment actuals</span>
+          </div>
+        </summary>
+        <div class="actual-entry-content">
+          <div class="actual-entry-actions">
+            <label class="field"><span>Progress date</span><input id="actual-entry-date" type="date"></label>
+            <button class="button button-primary button-small" id="save-actual-progress" type="button">Save actuals</button>
+          </div>
+          <p id="actual-entry-feedback" class="actual-entry-feedback" role="status" aria-live="polite">Select a Work Package to enter actual progress.</p>
+          <div id="actual-entry-table" class="schedule-table-wrap"><p class="empty-note">Select a Work Package to load equipment.</p></div>
+        </div>
+      </details>
+      <details class="master-schedule-panel">
+        <summary><span><small>IMPORTED FROM MASTER SCHEDULE</small><strong>Equipment & activity plan</strong></span><span class="schedule-source-count">56 equipment · 42 plan activities</span></summary>
+        <div class="master-schedule-content">
+          <div class="schedule-section-heading">
+            <div><h3 id="equipment-schedule-title">Equipment schedule</h3><p id="equipment-schedule-caption">Select a Work Package to browse its equipment and planned dates.</p></div>
+            <label class="schedule-search"><span class="visually-hidden">Search equipment schedule</span><input id="master-schedule-search" type="search" placeholder="Search equipment, area, activity..."></label>
+          </div>
+          <div id="equipment-schedule-table" class="schedule-table-wrap"><p class="empty-note">Select a Work Package to view its schedule.</p></div>
+          <details class="summary-plan-details">
+            <summary>High-level Master Schedule Plan <span>42 activities across 5 options</span></summary>
+            <div id="master-plan-table" class="schedule-table-wrap"></div>
+          </details>
+          <p class="schedule-source-note">Source: Master Schedule of all Tower Drum_22Oct26.xlsx · CR3 detail schedules. Plant selection is a daily-report filter; source Area/Unit values are retained as provided and are not mapped to Plant.</p>
+        </div>
+      </details>
+    </section>
+
+    <div class="content-grid">
+      <form class="report-form" id="report-form">
+        <section class="form-section">
+          <div class="section-heading">
+            <div class="section-icon">01</div>
+            <div><h2>Report details</h2><p>Identify the plant, work package, reporting period, and responsible lead.</p></div>
+          </div>
+          <div class="field-grid field-grid-4">
+            <label class="field"><span>Report date <b>*</b></span><input id="report-date" name="date" type="date" required></label>
+            <label class="field"><span>Shift</span><select id="shift" name="shift"><option>Day shift</option><option>Night shift</option><option>24-hour summary</option></select></label>
+            <label class="field"><span>Plant <b>*</b></span><select id="plant" name="plant" required><option value="">Select plant</option><option value="OL1">OL1</option><option value="CTU">CTU</option><option value="TFJ">TFJ</option></select></label>
+            <label class="field"><span>Work Package <b>*</b></span><select id="work-package" name="workPackage" required><option value="">Select work package</option><option value="MS03 Drum">MS03 Drum</option><option value="MS04 Tower">MS04 Tower</option></select></label>
+            <label class="field"><span>Prepared by <b>*</b></span><select id="prepared-by" name="preparedBy" required><option value="">Select name</option><option>ThanhDK</option><option>ThienHV</option><option>TruongTX</option><option>AnhTT</option><option>DongBM</option><option>MinhQN</option></select></label>
+            <label class="field"><span>Overall status</span><select id="overall-status" name="overallStatus"><option>On track</option><option>At risk</option><option>Behind schedule</option><option>Completed</option></select></label>
+            <label class="field"><span>Weather / conditions</span><input id="weather" name="weather" type="text" placeholder="e.g. Clear, 32°C"></label>
+          </div>
+        </section>
+
+        <details class="form-section optional-progress-section">
+          <summary class="optional-progress-summary">
+            <span><strong>Optional: activity-level progress</strong><small>Use for a short list of critical work-package activities.</small></span>
+          </summary>
+          <div class="optional-progress-content">
+            <div class="section-heading section-heading-between">
+              <p>Track plan, actual completion, and status for selected activities.</p>
+              <button class="button button-outline button-small" id="add-package-button" type="button">＋ Add activity</button>
+            </div>
+            <div class="table-wrap">
+              <table class="package-table">
+                <thead><tr><th>Activity</th><th>Area</th><th>Plan %</th><th>Actual %</th><th>Status</th><th><span class="visually-hidden">Actions</span></th></tr></thead>
+                <tbody id="package-rows"></tbody>
+              </table>
+            </div>
+          </div>
+        </details>
+
+        <section class="form-section">
+          <div class="section-heading section-heading-between">
+            <div class="section-heading">
+              <div class="section-icon">02</div>
+              <div><h2>Equipment milestones</h2><p>First select a Work Package above. Equipment and planned dates will then follow that Tower or Drum schedule; actual dates are entered manually.</p></div>
+            </div>
+            <button class="button button-outline button-small" id="add-overall-activity" type="button">＋ Add activity</button>
+          </div>
+          <div class="table-wrap">
+            <p class="empty-note daily-table-empty" data-empty-for="overall-activity-rows">No equipment milestones added. Add a row only when needed.</p>
+            <table class="daily-entry-table" hidden>
+              <thead><tr><th>Equipment</th><th>Planned Start</th><th>Actual Start</th><th>Plan Finish</th><th>Actual Finish</th><th><span class="visually-hidden">Actions</span></th></tr></thead>
+              <tbody id="overall-activity-rows"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="form-section">
+          <div class="section-heading section-heading-between">
+            <div class="section-heading">
+              <div class="section-icon">03</div>
+              <div><h2>Work completed this shift</h2><p>Add activities that matter to the handover, with status and remarks.</p></div>
+            </div>
+            <button class="button button-outline button-small" id="add-today-activity" type="button">＋ Add activity</button>
+          </div>
+          <div class="table-wrap">
+            <p class="empty-note daily-table-empty" data-empty-for="today-activity-rows">No work updates added. Add a row only when there is work to report.</p>
+            <table class="daily-entry-table narrative-entry-table" hidden>
+              <thead><tr><th>Equipment</th><th>Section</th><th>Activity</th><th>Due date</th><th>Status</th><th>Remarks</th><th><span class="visually-hidden">Actions</span></th></tr></thead>
+              <tbody id="today-activity-rows"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="form-section">
+          <div class="section-heading section-heading-between">
+            <div class="section-heading">
+              <div class="section-icon">04</div>
+              <div><h2>Next shift plan</h2><p>List the next shift's priorities, target dates, and status.</p></div>
+            </div>
+            <button class="button button-outline button-small" id="add-tomorrow-activity" type="button">＋ Add activity</button>
+          </div>
+          <div class="table-wrap">
+            <p class="empty-note daily-table-empty" data-empty-for="tomorrow-activity-rows">No next-shift activities added. Add a row only when needed.</p>
+            <table class="daily-entry-table narrative-entry-table" hidden>
+              <thead><tr><th>Equipment</th><th>Section</th><th>Activity</th><th>Due date</th><th>Status</th><th>Remarks</th><th><span class="visually-hidden">Actions</span></th></tr></thead>
+              <tbody id="tomorrow-activity-rows"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="form-section">
+          <div class="section-heading section-heading-between">
+            <div class="section-heading">
+              <div class="section-icon">05</div>
+              <div><h2>Open issues & actions</h2><p>Record only items requiring follow-up, with an owner and due date.</p></div>
+            </div>
+            <button class="button button-outline button-small" id="add-issue" type="button">＋ Add issue</button>
+          </div>
+          <div class="table-wrap">
+            <p class="empty-note daily-table-empty" data-empty-for="issue-rows">No open issues. Add an item only when follow-up is required.</p>
+            <table class="daily-entry-table issue-entry-table" hidden>
+              <thead><tr><th>No.</th><th>Issue</th><th>Countermeasure</th><th>Action by</th><th>Due date</th><th><span class="visually-hidden">Actions</span></th></tr></thead>
+              <tbody id="issue-rows"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="form-section">
+          <div class="section-heading">
+            <div class="section-icon">06</div>
+            <div><h2>Handover notes</h2><p>Use for critical HSE, quality, resource, or decision notes not listed above.</p></div>
+          </div>
+          <label class="field"><span>Key handover / decision required</span><textarea id="handover-summary" name="handoverSummary" rows="3" placeholder="Add critical information not captured in the tables above. Leave blank if none."></textarea></label>
+        </section>
+
+        <div class="form-footer">
+          <span id="save-feedback" role="status" aria-live="polite"></span>
+          <button class="button button-quiet" id="reset-form-button" type="button">Clear form</button>
+          <button class="button button-primary" type="submit">Save daily report <span aria-hidden="true">→</span></button>
+        </div>
+      </form>
+
+      <aside class="right-rail">
+        <section class="preview-card">
+          <div class="preview-head">
+            <div><p class="eyebrow">LIVE PREVIEW</p><h2>Shift snapshot</h2></div>
+            <span class="live-badge"><span></span> LIVE</span>
+          </div>
+          <div class="preview-status-row"><span>Overall status</span><strong id="preview-status" class="status-pill">On track</strong></div>
+          <div class="preview-meta">
+            <div><span>Reporting period</span><strong id="preview-date">—</strong></div>
+            <div><span>Location</span><strong id="preview-location">—</strong></div>
+          </div>
+          <div class="preview-divider"></div>
+          <div class="preview-work-heading"><strong>Work packages</strong><span id="package-count">0 activities</span></div>
+          <div id="preview-packages" class="preview-packages"><p class="empty-note">Add work packages to see the shift breakdown.</p></div>
+          <div class="preview-divider"></div>
+          <p class="preview-callout"><span class="callout-icon">↗</span> Keep blockers, owners, and required-by times explicit for an actionable handover.</p>
+          <div class="export-actions">
+            <button class="button button-outline button-block" id="export-csv-button" type="button">↓ Export for Excel (.csv)</button>
+            <button class="button button-outline button-block" id="print-button" type="button">▣ Print / save as PDF</button>
+          </div>
+        </section>
+        <section class="history-card">
+          <div class="history-heading">
+            <div><p class="eyebrow">LOCAL ARCHIVE</p><h2>Recent reports</h2></div>
+            <div class="history-heading-actions">
+              <span id="history-count" class="count-badge">0</span>
+              <button class="button button-outline button-small" id="toggle-history" type="button" aria-expanded="true" aria-controls="history-content">Collapse</button>
+            </div>
+          </div>
+          <div id="history-content">
+          <label class="archive-date-field" for="archive-date">View all saved details for a date
+            <input id="archive-date" type="date">
+          </label>
+          <div id="saved-date-details" class="saved-date-details" aria-live="polite">
+            <p class="empty-note">Select a date to view its saved reports.</p>
+          </div>
+          <div class="archive-subheading">Latest saved reports</div>
+          <div id="report-history" class="report-history"><p class="empty-note">Saved reports will appear here.</p></div>
+          <p class="privacy-note"><span>●</span> Reports are stored in this browser on this device.</p>
+          </div>
+        </section>
+      </aside>
+    </div>
+    <footer class="page-footer"><span>TURNAROUND DAILY REPORT</span><span>Plan clearly. Execute safely. Handover well.</span></footer>
+  </main>
+  <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+  <script src="master-schedule.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
