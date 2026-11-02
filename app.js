@@ -1254,47 +1254,15 @@ function renderSavedDateReports() {
     return;
   }
 
-  const detail = (label, value) => `<div class="saved-detail"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value === null || value === undefined || value === "" ? "—" : value)}</strong></div>`;
-  container.innerHTML = matchingReports.map(report => {
-    const packages = Array.isArray(report.packages) ? report.packages : [];
-    const narrative = report.handoverSummary
-      ? [["Handover notes", "handoverSummary"]]
-      : legacyHandoverFields.filter(([, key]) => report[key]);
-    return `<article class="saved-report-detail">
-      <header class="saved-report-heading">
-        <div><strong>${escapeHtml([report.plant || report.site, report.workPackage || report.unit].filter(Boolean).join(" · ") || "Turnaround report")}</strong>
-        <span>${escapeHtml(report.shift || "—")}</span></div>
-        <span class="status-pill ${escapeHtml((report.overallStatus || "On track").toLowerCase().replace(/\s+/g, "-"))}">${escapeHtml(report.overallStatus || "On track")}</span>
-      </header>
-      <div class="saved-detail-grid">
-        ${detail("Plant", report.plant || report.site)}
-        ${detail("Work Package", report.workPackage || report.unit)}
-        ${detail("Prepared by", report.preparedBy)}
-        ${detail("Weather / conditions", report.weather)}
-      </div>
-      ${renderSavedTable("Equipment milestones", report.overallActivities, [
-        ["Equipment", "equipment"], ["Planned Start", "plannedOpen"], ["Actual Start", "actualOpen"],
-        ["Plan Finish", "planClose"], ["Actual Finish", "actualClose"]
-      ])}
-      ${renderSavedTable("Work completed this shift", report.todayActivities, [
-        ["Equipment", "equipment"], ["Section", "section"], ["Activity", "activity"],
-        ["Due date", "dueDate"], ["Status", "status"], ["Remarks", "remarks"]
-      ])}
-      ${renderSavedTable("Next shift plan", report.tomorrowActivities, [
-        ["Equipment", "equipment"], ["Section", "section"], ["Activity", "activity"],
-        ["Due date", "dueDate"], ["Status", "status"], ["Remarks", "remarks"]
-      ])}
-      ${renderSavedTable("Open issues and actions", report.issues, [
-        ["Issue", "issue"], ["Countermeasure", "countermeasure"], ["Action by", "actionBy"], ["Due date", "dueDate"]
-      ])}
-      ${packages.length ? `<h3>Activity-level progress</h3><div class="saved-package-list">${packages.map(item => `<div class="saved-package-row">
-        <strong>${escapeHtml(item.name || "Activity")}</strong><span>${escapeHtml(item.area || "—")}</span>
-        <span>Plan ${escapeHtml(item.planned ?? 0)}% · Actual ${escapeHtml(item.actual ?? 0)}%</span><span>${escapeHtml(item.status || "—")}</span>
-      </div>`).join("")}</div>` : ""}
-      <div class="saved-narratives">${narrative.map(([label, key]) => `<section><h3>${escapeHtml(label)}</h3><p>${escapeHtml(report[key] || "No update reported.")}</p></section>`).join("")}</div>
-      <button class="button button-outline button-small saved-report-open" type="button" data-open-report="${escapeHtml(report.id)}">Open in report form</button>
-    </article>`;
-  }).join("");
+  const detail = (label, value) => '<div class="saved-detail"><span>' + escapeHtml(label) + '</span><strong>' + escapeHtml(value === null || value === undefined || value === "" ? "—" : value) + '</strong></div>';
+  container.innerHTML = matchingReports.map(report =>
+    '<article class="saved-report-detail"><div class="saved-detail-grid">'
+    + detail("Report date", formatDate(report.date))
+    + detail("Work Package", report.workPackage || report.unit)
+    + detail("Reported by", report.preparedBy)
+    + '</div><button class="button button-outline button-small saved-report-open" type="button" data-open-report="'
+    + escapeHtml(report.id) + '">Open in report form</button></article>'
+  ).join("");
 
   container.querySelectorAll("[data-open-report]").forEach(button => button.addEventListener("click", () => {
     const report = getReports().find(item => item.id === button.dataset.openReport);
