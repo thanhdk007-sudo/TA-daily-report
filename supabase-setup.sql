@@ -58,37 +58,55 @@ alter table public.turnaround_equipment_actuals enable row level security;
 alter table public.turnaround_equipment_overrides enable row level security;
 alter table public.turnaround_activity_statuses enable row level security;
 
-drop policy if exists "Authenticated team can manage turnaround reports" on public.turnaround_reports;
-create policy "Authenticated team can manage turnaround reports"
-on public.turnaround_reports for all to authenticated
-using ((select public.is_turnaround_team_member()))
-with check ((select public.is_turnaround_team_member()));
+do $$
+declare
+  table_name text;
+  policy_name text;
+begin
+  foreach table_name in array array[
+    'turnaround_reports',
+    'turnaround_equipment_actuals',
+    'turnaround_equipment_overrides',
+    'turnaround_activity_statuses'
+  ]
+  loop
+    for policy_name in
+      select policyname
+      from pg_policies
+      where schemaname = 'public'
+        and tablename = table_name
+    loop
+      execute format('drop policy if exists %I on public.%I', policy_name, table_name);
+    end loop;
+  end loop;
+end
+$$;
 
-drop policy if exists "Authenticated team can manage equipment actuals" on public.turnaround_equipment_actuals;
-create policy "Authenticated team can manage equipment actuals"
-on public.turnaround_equipment_actuals for all to authenticated
-using ((select public.is_turnaround_team_member()))
-with check ((select public.is_turnaround_team_member()));
+create policy "Anyone with the shared link can manage turnaround reports"
+on public.turnaround_reports for all to anon, authenticated
+using (true)
+with check (true);
 
-drop policy if exists "Authenticated team can manage equipment overrides" on public.turnaround_equipment_overrides;
-create policy "Authenticated team can manage equipment overrides"
-on public.turnaround_equipment_overrides for all to authenticated
-using ((select public.is_turnaround_team_member()))
-with check ((select public.is_turnaround_team_member()));
+create policy "Anyone with the shared link can manage equipment actuals"
+on public.turnaround_equipment_actuals for all to anon, authenticated
+using (true)
+with check (true);
 
-drop policy if exists "Authenticated team can manage activity statuses" on public.turnaround_activity_statuses;
-create policy "Authenticated team can manage activity statuses"
-on public.turnaround_activity_statuses for all to authenticated
-using ((select public.is_turnaround_team_member()))
-with check ((select public.is_turnaround_team_member()));
+create policy "Anyone with the shared link can manage equipment overrides"
+on public.turnaround_equipment_overrides for all to anon, authenticated
+using (true)
+with check (true);
 
--- Add each team email here in lowercase before inviting the user in Supabase Auth:
--- insert into public.turnaround_team_members (email) values ('member@company.com') on conflict do nothing;
+create policy "Anyone with the shared link can manage activity statuses"
+on public.turnaround_activity_statuses for all to anon, authenticated
+using (true)
+with check (true);
 
-grant select, insert, update, delete on public.turnaround_reports to authenticated;
-grant select, insert, update, delete on public.turnaround_equipment_actuals to authenticated;
-grant select, insert, update, delete on public.turnaround_equipment_overrides to authenticated;
-grant select, insert, update, delete on public.turnaround_activity_statuses to authenticated;
+grant usage on schema public to anon, authenticated;
+grant select, insert, update, delete on public.turnaround_reports to anon, authenticated;
+grant select, insert, update, delete on public.turnaround_equipment_actuals to anon, authenticated;
+grant select, insert, update, delete on public.turnaround_equipment_overrides to anon, authenticated;
+grant select, insert, update, delete on public.turnaround_activity_statuses to anon, authenticated;
 
 do $$
 declare
