@@ -1440,7 +1440,7 @@ function reportDocument(report) {
     </tbody></table>` : ""}
     ${getHandoverSummary(report) ? `<h2>Handover notes</h2><p class="narrative">${escapeHtml(getHandoverSummary(report))}</p>` : ""}
     <footer><span>Turnaround Daily Report</span><span>Generated ${escapeHtml(formatDate(localDateString()))} ${escapeHtml(new Date().toLocaleTimeString("en"))}</span></footer>
-    <script>window.addEventListener("load",()=>window.print());</script></body></html>`;
+    <script>window.addEventListener("load",async()=>{await Promise.all(Array.from(document.images,image=>image.decode().catch(error=>console.error("Could not decode report image before printing.",error))));requestAnimationFrame(()=>requestAnimationFrame(()=>window.print()));});</script></body></html>`;
 }
 
 function printReport() {
