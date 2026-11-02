@@ -704,6 +704,12 @@ function loadReport(report) {
   const workPackageSelect = document.getElementById("work-package");
   const savedWorkPackage = normalizeWorkPackage(report.workPackage || report.unit);
   if (savedWorkPackage) workPackageSelect.value = savedWorkPackage;
+  const overviewWorkPackageSelect = document.getElementById("overview-work-package");
+  if (savedWorkPackage && Array.from(overviewWorkPackageSelect.options).some(option => option.value === savedWorkPackage)) {
+    overviewWorkPackageSelect.value = savedWorkPackage;
+    editingEquipmentTags.clear();
+    renderOverview();
+  }
   updateActivityEquipmentOptions();
   for (const id of fieldIds) {
     const element = document.getElementById(id);
