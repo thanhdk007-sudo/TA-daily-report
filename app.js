@@ -875,7 +875,6 @@ function renderMasterSchedule() {
   const caption = document.getElementById("equipment-schedule-caption");
   const records = getEquipmentRecords(workPackage);
   const activityStatuses = workPackage === "MS04 Tower" ? getActivityStatuses() : {};
-  const panel = document.querySelector(".master-schedule-panel");
 
   if (!workPackage) {
     title.textContent = "Equipment schedule";
@@ -955,7 +954,6 @@ function renderMasterSchedule() {
         }).join("")}</tbody>
       </table>`;
     }
-    panel.open = true;
   }
 
   const planTable = document.getElementById("master-plan-table");
