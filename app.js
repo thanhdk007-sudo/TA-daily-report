@@ -13,6 +13,7 @@ const masterSchedule = window.MASTER_SCHEDULE;
 const preparerNames = ["ThanhDK", "ThienHV", "TruongTX", "AnhTT", "DongBM", "MinhQN"];
 const activitySections = ["2A", "2B", "2C", "3A", "2D", "2E", "5T", "0P", "CTU", "TFJ"];
 let toastTimer;
+let editingReportId = null;
 const editingEquipmentTags = new Set();
 let cloudReady = false;
 let cloudWriteQueue = Promise.resolve();
@@ -691,7 +692,15 @@ function updateDashboard() {
     : '<p class="empty-note">Add work packages to see the shift breakdown.</p>';
 }
 
+function updateSaveButtonLabels() {
+  const label = editingReportId ? "Update daily report" : "Save daily report";
+  document.getElementById("save-report-button").innerHTML = `${label} <span aria-hidden="true">→</span>`;
+  document.querySelector(".form-footer button[type=submit]").innerHTML = `${label} <span aria-hidden="true">→</span>`;
+}
+
 function loadReport(report) {
+  editingReportId = String(report.id);
+  updateSaveButtonLabels();
   const workPackageSelect = document.getElementById("work-package");
   const savedWorkPackage = normalizeWorkPackage(report.workPackage || report.unit);
   if (savedWorkPackage) workPackageSelect.value = savedWorkPackage;
@@ -1316,15 +1325,26 @@ function saveReport(event) {
   if (event) event.preventDefault();
   if (!validateForm()) return;
   const report = collectReport();
-  report.id = crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
-  report.savedAt = new Date().toISOString();
   const reports = getReports();
-  reports.push(report);
+  const existingIndex = editingReportId
+    ? reports.findIndex(item => String(item.id) === editingReportId)
+    : -1;
+  const isUpdate = existingIndex >= 0;
+  report.id = isUpdate
+    ? reports[existingIndex].id
+    : crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  report.savedAt = new Date().toISOString();
+  if (isUpdate) reports[existingIndex] = report;
+  else reports.push(report);
   if (storeReports(reports)) {
+    editingReportId = String(report.id);
+    updateSaveButtonLabels();
     document.getElementById("archive-date").value = report.date;
     renderHistory();
-    document.getElementById("save-feedback").textContent = "Saved to this browser";
-    showToast("Daily report saved.");
+    document.getElementById("save-feedback").textContent = isUpdate
+      ? "Updated saved report"
+      : cloudReady ? "Saved to shared workspace" : "Saved to this browser";
+    showToast(isUpdate ? "Saved report updated." : "Daily report saved.");
   }
 }
 
@@ -1466,6 +1486,8 @@ function printReport() {
 
 function resetForm() {
   if (!window.confirm("Clear the current form? Unsaved changes will be lost.")) return;
+  editingReportId = null;
+  updateSaveButtonLabels();
   form.reset();
   document.getElementById("report-date").value = localDateString();
   document.querySelector(".optional-progress-section").open = false;
