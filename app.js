@@ -1387,7 +1387,7 @@ function reportDocument(report) {
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Turnaround Daily Report — ${escapeHtml(formatDate(report.date))}</title>
     <style>
       *{box-sizing:border-box}body{margin:0;padding:34px;color:#213547;font:12px Arial,sans-serif}
-      header{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #176b87;padding-bottom:15px;margin-bottom:20px}
+      header{display:flex;justify-content:space-between;align-items:center;border-bottom:3px solid #176b87;padding-bottom:15px;margin-bottom:20px}.report-heading{display:flex;align-items:center;gap:16px;min-width:0}.report-logo{display:block;width:192px;height:42px;object-fit:contain;flex:0 0 auto}.report-heading>div{min-width:0}
       .eyebrow{color:#167d77;font-weight:bold;letter-spacing:2px;font-size:9px;margin:0 0 7px}
       h1{font-size:23px;margin:0;color:#102a43}header p{margin:6px 0 0;color:#708090}
       .tag{padding:7px 10px;border-radius:20px;background:#edf7f3;color:#237d68;font-weight:bold;font-size:10px}
@@ -1410,8 +1410,8 @@ function reportDocument(report) {
       footer{margin-top:24px;padding-top:8px;border-top:1px solid #dfe7ec;color:#81909b;font-size:9px;display:flex;justify-content:space-between}
       @media print{body{padding:0}h2{break-after:avoid}.detail,table,tr,.curve-wrap,.curve-legend{break-inside:avoid}}
     </style></head><body>
-    <header><div><p class="eyebrow">OPERATIONS CONTROL · TURNAROUND</p><h1>Daily Shift Report</h1>
-    <p>${escapeHtml(report.plant || report.site || "Plant not specified")} · ${escapeHtml(report.workPackage || report.unit || "Work package not specified")} · ${escapeHtml(formatDate(report.date))} · ${escapeHtml(report.shift)}</p></div>
+    <header><div class="report-heading"><img class="report-logo" src="https://thanhdk007-sudo.github.io/TA-daily-report/company-logo-scg-lsp.png" alt="SCGC and LSP logos"><div><p class="eyebrow">OPERATIONS CONTROL · TURNAROUND</p><h1>Daily Shift Report</h1>
+    <p>${escapeHtml(report.plant || report.site || "Plant not specified")} · ${escapeHtml(report.workPackage || report.unit || "Work package not specified")} · ${escapeHtml(formatDate(report.date))} · ${escapeHtml(report.shift)}</p></div></div>
     <span class="tag">${escapeHtml(report.overallStatus)}</span></header>
     <div class="grid">
       ${detail("Prepared by", report.preparedBy)}
