@@ -444,7 +444,7 @@ function getPackageSectionLabel(record) {
     || "—";
 }
 
-function showToast(message) {
+function getEquipmentActivityLabel(activity) { const descriptions = { B: "Blind equipment", DB: "De-blind equipment", M: "Open / close M/H", V: "Preparation work / remove ventilation sys", S: "Install / remove internal scaffolding", C: "Take equipment out / install back to tower", MW: "Open / close manway of tray", T: "Torque all nozzle around the tower", MG: "Margin 25%", I: "Inspection OPE / ME", P: "NDT inspection by PDM", R: "Repair as-found inspection", D: "Remove / install demister", RI: "Remove / install insulation M/H", RC: "Remove / install cartridges", L: "Load catalyst / packing", U: "Un-load catalyst / packing", CM: "Cleaning shell by manual", CS: "Cleaning shell by water jet", CN: "Cleaning for NDT inspection by PDM", CD: "Cleaning demister by air blowing", CO: "Cleaning demister by soaking in wash oil", CH: "Cleaning by HPWJ", CV: "Cleaning by air vacuum" }; const code = String(activity ?? "").trim(); return descriptions[code] ? `${code} — ${descriptions[code]}` : String(activity ?? ""); }  function showToast(message) {
   toast.textContent = message;
   toast.classList.add("visible");
   clearTimeout(toastTimer);
@@ -891,7 +891,7 @@ function renderMasterSchedule() {
     const filtered = records.filter(record => [
       record.equipmentTag, record.area, record.packageCode, record.unit, record.section,
       getPackageSectionLabel(record),
-      record.packageNo, record.operationPackage, ...record.timeline.map(item => item.activity)
+      record.packageNo, record.operationPackage, ...record.timeline.flatMap(item => [item.activity, getEquipmentActivityLabel(item.activity)])
     ].some(value => String(value ?? "").toLowerCase().includes(search)));
     caption.textContent = `${filtered.length} of ${records.length} equipment records · ${records.reduce((count, item) => count + item.timeline.length, 0).toLocaleString()} scheduled time slots`;
     if (!filtered.length) {
@@ -928,7 +928,7 @@ function renderMasterSchedule() {
                 : "not-started";
               const rowStatus = workPackage === "MS04 Tower" ? status : "";
               const statusControl = workPackage === "MS04 Tower"
-                ? `<td><select class="activity-status-select activity-status-${escapeHtml(status)}" data-activity-status="${escapeHtml(activityKey)}" data-saved-status="${escapeHtml(status)}" aria-label="Status for ${escapeHtml(item.activity)} on ${escapeHtml(item.date)}">
+                ? `<td><select class="activity-status-select activity-status-${escapeHtml(status)}" data-activity-status="${escapeHtml(activityKey)}" data-saved-status="${escapeHtml(status)}" aria-label="Status for ${escapeHtml(getEquipmentActivityLabel(item.activity))} on ${escapeHtml(item.date)}">
                     <option value="not-started"${status === "not-started" ? " selected" : ""}>Not started</option>
                     <option value="ongoing"${status === "ongoing" ? " selected" : ""}>Ongoing</option>
                     <option value="done"${status === "done" ? " selected" : ""}>Done</option>
@@ -937,11 +937,11 @@ function renderMasterSchedule() {
               return `<tr class="${rowStatus ? `activity-status-row-${escapeHtml(rowStatus)}` : ""}">
                 <td>${escapeHtml(formatDate(item.date))}</td>
                 <td>${escapeHtml(item.start || "—")}–${escapeHtml(item.finish || "—")}</td>
-                <td>${escapeHtml(item.activity)}</td>${statusControl}</tr>`;
+                <td>${escapeHtml(getEquipmentActivityLabel(item.activity))}</td>${statusControl}</tr>`;
             }).join("");
           const activityHeaders = workPackage === "MS04 Tower"
-            ? "<th>Date</th><th>Time</th><th>Scheduled activity / code</th><th>Status</th>"
-            : "<th>Date</th><th>Time</th><th>Scheduled activity / code</th>";
+            ? "<th>Date</th><th>Time</th><th>Scheduled activity</th><th>Status</th>"
+            : "<th>Date</th><th>Time</th><th>Scheduled activity</th>";
           const emptyActivity = workPackage === "MS04 Tower"
             ? '<tr><td colspan="4">No daily activities listed.</td></tr>'
             : '<tr><td colspan="3">No daily activities listed.</td></tr>';
