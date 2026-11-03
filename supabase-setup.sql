@@ -1,4 +1,3 @@
-create table if not exists public.turnaround_reports (
   id text primary key,
   data jsonb not null,
   updated_at timestamptz not null default now()
@@ -21,8 +20,18 @@ create table if not exists public.turnaround_equipment_overrides (
 create table if not exists public.turnaround_activity_statuses (
   activity_key text primary key,
   status text not null check (status in ('not-started', 'ongoing', 'done')),
+  progress integer not null default 0 check (progress between 0 and 100),
   updated_at timestamptz not null default now()
 );
+
+alter table public.turnaround_activity_statuses
+  add column if not exists progress integer check (progress between 0 and 100);
+update public.turnaround_activity_statuses
+set progress = case status when 'done' then 100 when 'ongoing' then 1 else 0 end
+where progress is null;
+alter table public.turnaround_activity_statuses
+  alter column progress set default 0,
+  alter column progress set not null;
 
 create table if not exists public.turnaround_team_members (
   email text primary key check (email = lower(email)),
@@ -131,3 +140,4 @@ begin
   end loop;
 end
 $$;
+
