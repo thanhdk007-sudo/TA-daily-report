@@ -971,8 +971,8 @@ function renderMasterSchedule() {
             <td>${escapeHtml(areaUnit || "—")}</td><td>${escapeHtml(packageSection)}</td>
             <td>${escapeHtml(record.maintenanceStart ? formatDate(record.maintenanceStart) : "—")}</td>
             <td>${escapeHtml(record.maintenanceFinish ? formatDate(record.maintenanceFinish) : "—")}</td>
-            <td>${escapeHtml(record.actualStart ? formatDate(record.actualStart) : "—")}</td>
-            <td>${escapeHtml(record.actualFinish ? formatDate(record.actualFinish) : "—")}</td>
+            <td><input type="date" data-equipment-actual-date="actualStart" data-equipment-tag="${escapeHtml(record.equipmentTag)}" data-saved-value="${escapeHtml(record.actualStart || "")}" aria-label="Actual start for ${escapeHtml(record.equipmentTag)}" value="${escapeHtml(record.actualStart || "")}"></td>
+            <td><input type="date" data-equipment-actual-date="actualFinish" data-equipment-tag="${escapeHtml(record.equipmentTag)}" data-saved-value="${escapeHtml(record.actualFinish || "")}" aria-label="Actual finish for ${escapeHtml(record.equipmentTag)}" value="${escapeHtml(record.actualFinish || "")}"></td>
             <td><strong data-equipment-overall-progress>${overallProgress === null ? "—" : `${overallProgress.toFixed(1)}%`}</strong></td>
             <td><details class="equipment-activities"><summary>${record.timeline.length} ${record.timeline.length === 1 ? "activity" : "activities"}</summary>
               <div class="equipment-activities-list"><table><thead><tr>${activityHeaders}</tr></thead><tbody>${activityRows || emptyActivity}</tbody></table></div>
@@ -1000,6 +1000,11 @@ function renderMasterSchedule() {
 }
 
 function saveActivityStatus(event) {
+  const actualDateInput = event.target.closest("[data-equipment-actual-date]");
+  if (actualDateInput) {
+    saveEquipmentActualDate(actualDateInput);
+    return;
+  }
   const input = event.target.closest("[data-activity-progress]");
   if (!input) return;
   const progress = input.valueAsNumber;
@@ -1032,7 +1037,40 @@ function saveActivityStatus(event) {
   }
 }
 
-function renderDelayedEquipmentPanel(workPackage) { const panel = document.getElementById("delayed-equipment-panel"); if (!panel) return; if (!workPackage) { panel.innerHTML = '<p class="empty-note">Select a Work Package to check equipment delays.</p>'; return; } const today = localDateString(); const todayTime = new Date(today + "T00:00:00Z").getTime(); const records = getEquipmentRecords(workPackage).filter(record => record.maintenanceStart && record.maintenanceFinish && new Date(record.maintenanceStart + "T00:00:00Z").getTime() <= todayTime); const actualProgress = new Map(); getEquipmentActuals().filter(item => normalizeWorkPackage(item.workPackage) === workPackage && item.date <= today).sort((a,b) => a.date.localeCompare(b.date) || String(a.savedAt).localeCompare(String(b.savedAt))).forEach(item => Object.entries(item.progress || {}).forEach(([tag,value]) => { const progress=Number(value); if(Number.isFinite(progress) && progress>=0 && progress<=100) actualProgress.set(String(tag),progress); })); const missing=records.filter(record=>!actualProgress.has(String(record.equipmentTag))).length; const delayed=records.flatMap(record=>{const tag=String(record.equipmentTag);if(!actualProgress.has(tag))return [];const start=new Date(record.maintenanceStart+"T00:00:00Z").getTime();const finish=new Date(record.maintenanceFinish+"T00:00:00Z").getTime();if(!Number.isFinite(start)||!Number.isFinite(finish))return [];const planned=todayTime>=finish?100:Math.max(0,Math.min(100,(todayTime-start)/Math.max(1,finish-start)*100));const actual=actualProgress.get(tag);const behind=planned-actual;return behind>0.1?[{record,planned,actual,behind,finish}]:[];}).sort((a,b)=>b.behind-a.behind||a.finish-b.finish); if(!delayed.length){const note=missing?" "+missing+" scheduled equipment item"+(missing===1?" has":"s have")+" no actual progress recorded yet.":"";panel.innerHTML='<p class="empty-note">No confirmed delays as of '+escapeHtml(formatDate(today))+'.'+note+'</p>';return;} const summary='<p class="delay-summary">'+delayed.length+' equipment item'+(delayed.length===1?'':'s')+' behind plan · as of '+escapeHtml(formatDate(today))+(missing?' · '+missing+' without actual progress':'')+'</p>';const rows=delayed.map(item=>{const overdueDays=Math.floor((todayTime-item.finish)/86400000);const overdue=overdueDays>0?'<small class="delay-overdue">'+overdueDays+' days overdue</small>':'';return '<tr><td><strong>'+escapeHtml(item.record.equipmentTag)+'</strong></td><td>'+escapeHtml(item.record.area||item.record.unit||item.record.section||'—')+'</td><td>'+escapeHtml(formatDate(item.record.maintenanceFinish))+overdue+'</td><td>'+item.planned.toFixed(1)+'%</td><td>'+item.actual.toFixed(1)+'%</td><td><strong class="delay-variance">'+item.behind.toFixed(1)+' pp</strong></td></tr>';}).join('');panel.innerHTML=summary+'<div class="schedule-table-wrap"><table class="delay-table"><thead><tr><th>Equipment</th><th>Area / unit</th><th>Plan finish</th><th>Planned</th><th>Actual</th><th>Behind</th></tr></thead><tbody>'+rows+'</tbody></table></div>'; }  function renderActualEntryTable() {
+function renderDelayedEquipmentPanel(workPackage) { const panel = document.getElementById("delayed-equipment-panel"); if (!panel) return; if (!workPackage) { panel.innerHTML = '<p class="empty-note">Select a Work Package to check equipment delays.</p>'; return; } const today = localDateString(); const todayTime = new Date(today + "T00:00:00Z").getTime(); const records = getEquipmentRecords(workPackage).filter(record => record.maintenanceStart && record.maintenanceFinish && new Date(record.maintenanceStart + "T00:00:00Z").getTime() <= todayTime); const actualProgress = new Map(); getEquipmentActuals().filter(item => normalizeWorkPackage(item.workPackage) === workPackage && item.date <= today).sort((a,b) => a.date.localeCompare(b.date) || String(a.savedAt).localeCompare(String(b.savedAt))).forEach(item => Object.entries(item.progress || {}).forEach(([tag,value]) => { const progress=Number(value); if(Number.isFinite(progress) && progress>=0 && progress<=100) actualProgress.set(String(tag),progress); })); const missing=records.filter(record=>!actualProgress.has(String(record.equipmentTag))).length; const delayed=records.flatMap(record=>{const tag=String(record.equipmentTag);if(!actualProgress.has(tag))return [];const start=new Date(record.maintenanceStart+"T00:00:00Z").getTime();const finish=new Date(record.maintenanceFinish+"T00:00:00Z").getTime();if(!Number.isFinite(start)||!Number.isFinite(finish))return [];const planned=todayTime>=finish?100:Math.max(0,Math.min(100,(todayTime-start)/Math.max(1,finish-start)*100));const actual=actualProgress.get(tag);const behind=planned-actual;return behind>0.1?[{record,planned,actual,behind,finish}]:[];}).sort((a,b)=>b.behind-a.behind||a.finish-b.finish); if(!delayed.length){const note=missing?" "+missing+" scheduled equipment item"+(missing===1?" has":"s have")+" no actual progress recorded yet.":"";panel.innerHTML='<p class="empty-note">No confirmed delays as of '+escapeHtml(formatDate(today))+'.'+note+'</p>';return;} const summary='<p class="delay-summary">'+delayed.length+' equipment item'+(delayed.length===1?'':'s')+' behind plan · as of '+escapeHtml(formatDate(today))+(missing?' · '+missing+' without actual progress':'')+'</p>';const rows=delayed.map(item=>{const overdueDays=Math.floor((todayTime-item.finish)/86400000);const overdue=overdueDays>0?'<small class="delay-overdue">'+overdueDays+' days overdue</small>':'';return '<tr><td><strong>'+escapeHtml(item.record.equipmentTag)+'</strong></td><td>'+escapeHtml(item.record.area||item.record.unit||item.record.section||'—')+'</td><td>'+escapeHtml(formatDate(item.record.maintenanceFinish))+overdue+'</td><td>'+item.planned.toFixed(1)+'%</td><td>'+item.actual.toFixed(1)+'%</td><td><strong class="delay-variance">'+item.behind.toFixed(1)+' pp</strong></td></tr>';}).join('');panel.innerHTML=summary+'<div class="schedule-table-wrap"><table class="delay-table"><thead><tr><th>Equipment</th><th>Area / unit</th><th>Plan finish</th><th>Planned</th><th>Actual</th><th>Behind</th></tr></thead><tbody>'+rows+'</tbody></table></div>'; }  function saveEquipmentActualDate(input) {
+  const workPackage = normalizeWorkPackage(document.getElementById("overview-work-package").value);
+  const tag = input.dataset.equipmentTag;
+  const row = input.closest("tr");
+  const actualStart = row.querySelector('[data-equipment-actual-date="actualStart"]');
+  const actualFinish = row.querySelector('[data-equipment-actual-date="actualFinish"]');
+  if (actualStart.value && actualFinish.value && actualStart.value > actualFinish.value) {
+    input.value = input.dataset.savedValue;
+    input.focus();
+    showToast(`Actual finish cannot be before Actual Start for ${tag}.`);
+    return;
+  }
+
+  const overrides = getEquipmentOverrides();
+  const existing = overrides.find(item =>
+    normalizeWorkPackage(item.workPackage) === workPackage && String(item.equipmentTag) === tag);
+  const updated = {
+    ...(existing || { workPackage, equipmentTag: tag }),
+    actualStart: actualStart.value,
+    actualFinish: actualFinish.value
+  };
+  const nextOverrides = overrides.filter(item =>
+    normalizeWorkPackage(item.workPackage) !== workPackage || String(item.equipmentTag) !== tag);
+  nextOverrides.push(updated);
+  if (!storeEquipmentOverrides(nextOverrides)) {
+    input.value = input.dataset.savedValue;
+    return;
+  }
+  actualStart.dataset.savedValue = actualStart.value;
+  actualFinish.dataset.savedValue = actualFinish.value;
+  showToast(`Actual dates saved for ${tag}.`);
+}
+
+function renderActualEntryTable() {
   const workPackage = normalizeWorkPackage(document.getElementById("overview-work-package").value);
   const date = document.getElementById("actual-entry-date").value;
   const container = document.getElementById("actual-entry-table");
