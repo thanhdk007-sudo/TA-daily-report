@@ -974,7 +974,7 @@ function renderMasterSchedule() {
             <td>${escapeHtml(record.actualStart ? formatDate(record.actualStart) : "—")}</td>
             <td>${escapeHtml(record.actualFinish ? formatDate(record.actualFinish) : "—")}</td>
             <td><strong data-equipment-overall-progress>${overallProgress === null ? "—" : `${overallProgress.toFixed(1)}%`}</strong></td>
-            <td><details class="equipment-activities"><summary>${record.timeline.length} slots</summary>
+            <td><details class="equipment-activities"><summary>${record.timeline.length} ${record.timeline.length === 1 ? "activity" : "activities"}</summary>
               <div class="equipment-activities-list"><table><thead><tr>${activityHeaders}</tr></thead><tbody>${activityRows || emptyActivity}</tbody></table></div>
             </details></td>
           </tr>`;
