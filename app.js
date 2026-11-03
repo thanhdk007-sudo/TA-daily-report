@@ -789,7 +789,7 @@ function renderOverview() {
   const latest = reports[reports.length - 1];
   document.getElementById("overview-latest-date").textContent = latest?.date ? formatDate(latest.date) : "—";
 
-  renderMasterSchedule();
+  renderMasterSchedule(); renderDelayedEquipmentPanel(workPackage);
   renderActualEntryTable();
   const chart = document.getElementById("curve-chart-wrap");
   if (!workPackage) {
@@ -1132,7 +1132,7 @@ function handleEquipmentRowAction(event) {
   else if (action === "cancel") editingEquipmentTags.delete(tag);
   const actualProgressInputs = new Map([...document.querySelectorAll("#actual-entry-table [data-actual-tag]")]
     .map(input => [input.dataset.actualTag, input.value]));
-  renderActualEntryTable(); renderDelayedEquipmentPanel(workPackage);
+  renderActualEntryTable();
   document.querySelectorAll("#actual-entry-table [data-actual-tag]").forEach(input => {
     if (actualProgressInputs.has(input.dataset.actualTag)) {
       input.value = actualProgressInputs.get(input.dataset.actualTag);
