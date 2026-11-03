@@ -141,6 +141,7 @@ h1 { margin-bottom: 5px; color: var(--navy); font: 800 27px Manrope, sans-serif;
 .master-equipment-table td, .master-plan-table td { padding: 8px 7px; border-bottom: 1px solid #edf1f4; color: #526779; font-size: 8px; vertical-align: top; }
 .master-equipment-table td strong { color: #344c60; font-size: 9px; }
 .master-equipment-table td:nth-child(5), .master-equipment-table td:nth-child(6) { white-space: nowrap; }
+.master-equipment-table input[data-equipment-actual-date] { box-sizing: border-box; width: 125px; min-width: 110px; padding: 3px 4px; border: 1px solid #d5dfe5; border-radius: 4px; color: #42586b; font: inherit; font-size: 8px; }
 .equipment-activities > summary { color: var(--teal); cursor: pointer; font-size: 8px; font-weight: 700; white-space: nowrap; }
 .equipment-activities-list { position: relative; z-index: 1; width: min(560px, 78vw); max-height: 260px; overflow: auto; margin-top: 6px; border: 1px solid #e5ebef; border-radius: 5px; background: #fff; box-shadow: 0 4px 12px #18394b12; }
 .equipment-activities-list table { width: 100%; border-collapse: collapse; text-align: left; }
