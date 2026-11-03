@@ -1,3 +1,4 @@
+const STORAGE_KEY = "turnaround-daily-reports-v1";
 const ACTUALS_STORAGE_KEY = "turnaround-equipment-actuals-v1";
 const EQUIPMENT_OVERRIDES_STORAGE_KEY = "turnaround-equipment-overrides-v1";
 const ACTIVITY_STATUSES_STORAGE_KEY = "turnaround-equipment-activity-statuses-v1";
