@@ -1,3 +1,6 @@
+:root {
+
+#retry-connection-button:disabled { display: none; }
   color-scheme: light;
   --navy: #102a43;
   --navy-soft: #1d405c;
