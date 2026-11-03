@@ -1,4 +1,3 @@
-const STORAGE_KEY = "turnaround-daily-reports-v1";
 const ACTUALS_STORAGE_KEY = "turnaround-equipment-actuals-v1";
 const EQUIPMENT_OVERRIDES_STORAGE_KEY = "turnaround-equipment-overrides-v1";
 const ACTIVITY_STATUSES_STORAGE_KEY = "turnaround-equipment-activity-statuses-v1";
@@ -100,14 +99,23 @@ async function loadSharedWorkspace() {
     supabaseClient.from("turnaround_reports").select("id,data"),
     supabaseClient.from("turnaround_equipment_actuals").select("id,data"),
     supabaseClient.from("turnaround_equipment_overrides").select("work_package,equipment_tag,data"),
-    supabaseClient.from("turnaround_activity_statuses").select("activity_key,status")
+    supabaseClient.from("turnaround_activity_statuses").select("activity_key,status,progress")
   ]);
   const [reportRows, actualRows, overrideRows, statusRows] = results.map(assertCloudResult);
 
   const remoteReports = reportRows.map(row => row.data);
   const remoteActuals = actualRows.map(row => row.data);
   const remoteOverrides = overrideRows.map(row => row.data);
-  const remoteStatuses = Object.fromEntries(statusRows.map(row => [row.activity_key, row.status]));
+  const normalizeActivityStatus = value => {
+    let progress = 0;
+    if (value && typeof value === "object" && !Array.isArray(value)) {
+      const storedProgress = Number(value.progress);
+      if (Number.isInteger(storedProgress) && storedProgress >= 0 && storedProgress <= 100) progress = storedProgress;
+    } else if (value === "done") progress = 100;
+    else if (value === "ongoing") progress = 1;
+    return { progress, status: statusForProgress(progress) };
+  };
+  const remoteStatuses = Object.fromEntries(statusRows.map(row => [row.activity_key, normalizeActivityStatus(row)]));
   const localReports = readLocalArray(STORAGE_KEY);
   const localActuals = readLocalArray(ACTUALS_STORAGE_KEY);
   const localOverrides = readLocalArray(EQUIPMENT_OVERRIDES_STORAGE_KEY);
@@ -117,7 +125,8 @@ async function loadSharedWorkspace() {
   const actuals = mergeByKey(remoteActuals, localActuals, item => String(item.id));
   const overrides = mergeByKey(remoteOverrides, localOverrides,
     item => `${normalizeWorkPackage(item.workPackage)}::${item.equipmentTag}`);
-  const statuses = { ...localStatuses, ...remoteStatuses };
+  const statuses = Object.fromEntries(Object.entries({ ...localStatuses, ...remoteStatuses })
+    .map(([key, value]) => [key, normalizeActivityStatus(value)]));
 
   localStorage.setItem(STORAGE_KEY, JSON.stringify(reports));
   localStorage.setItem(ACTUALS_STORAGE_KEY, JSON.stringify(actuals));
@@ -136,7 +145,7 @@ async function loadSharedWorkspace() {
     !overrideIds.has(`${normalizeWorkPackage(item.workPackage)}::${item.equipmentTag}`));
   const missingStatuses = Object.entries(localStatuses)
     .filter(([key]) => !statusKeys.has(key))
-    .map(([activity_key, status]) => ({ activity_key, status }));
+    .map(([activity_key, value]) => ({ activity_key, ...normalizeActivityStatus(value) }));
 
   if (missingReports.length) uploads.push(supabaseClient.from("turnaround_reports").upsert(
     missingReports.map(data => ({ id: String(data.id), data }))
@@ -387,13 +396,27 @@ function storeEquipmentOverrides(overrides) {
   }
 }
 
+function statusForProgress(progress) {
+  if (progress === 0) return "not-started";
+  if (progress === 100) return "done";
+  return "ongoing";
+}
+
 function getActivityStatuses() {
   try {
     const saved = JSON.parse(localStorage.getItem(ACTIVITY_STATUSES_STORAGE_KEY) || "{}");
     if (!saved || typeof saved !== "object" || Array.isArray(saved)) {
       throw new Error("Stored equipment activity statuses are not an object.");
     }
-    return saved;
+    return Object.fromEntries(Object.entries(saved).map(([key, value]) => {
+      let progress = 0;
+      if (value && typeof value === "object" && !Array.isArray(value)) {
+        const storedProgress = Number(value.progress);
+        if (Number.isInteger(storedProgress) && storedProgress >= 0 && storedProgress <= 100) progress = storedProgress;
+      } else if (value === "done") progress = 100;
+      else if (value === "ongoing") progress = 1;
+      return [key, { progress, status: statusForProgress(progress) }];
+    }));
   } catch (error) {
     console.error("Could not read equipment activity statuses.", error);
     showToast("Equipment activity statuses could not be read. Check browser storage.");
@@ -407,8 +430,8 @@ function storeActivityStatuses(statuses) {
     localStorage.setItem(ACTIVITY_STATUSES_STORAGE_KEY, JSON.stringify(statuses));
     if (cloudReady) queueCloudWrite(async () => {
       const changed = Object.entries(statuses)
-        .filter(([key, status]) => previous[key] !== status)
-        .map(([activity_key, status]) => ({ activity_key, status }));
+        .filter(([key, value]) => JSON.stringify(previous[key]) !== JSON.stringify(value))
+        .map(([activity_key, value]) => ({ activity_key, ...value }));
       if (!changed.length) return null;
       const { error } = await supabaseClient.from("turnaround_activity_statuses")
         .upsert(changed, { onConflict: "activity_key" });
@@ -922,17 +945,11 @@ function renderMasterSchedule() {
                 workPackage, record.equipmentTag, sourceIndex, item.date, item.start || "",
                 item.finish || "", item.activity
               ]));
-              const savedStatus = activityStatuses[activityKey];
-              const status = ["not-started", "ongoing", "done"].includes(savedStatus)
-                ? savedStatus
-                : "not-started";
+              const activityProgress = activityStatuses[activityKey] || { progress: 0, status: "not-started" };
+              const { progress, status } = activityProgress;
               const rowStatus = workPackage === "MS04 Tower" ? status : "";
               const statusControl = workPackage === "MS04 Tower"
-                ? `<td><select class="activity-status-select activity-status-${escapeHtml(status)}" data-activity-status="${escapeHtml(activityKey)}" data-saved-status="${escapeHtml(status)}" aria-label="Status for ${escapeHtml(getEquipmentActivityLabel(item.activity))} on ${escapeHtml(item.date)}">
-                    <option value="not-started"${status === "not-started" ? " selected" : ""}>Not started</option>
-                    <option value="ongoing"${status === "ongoing" ? " selected" : ""}>Ongoing</option>
-                    <option value="done"${status === "done" ? " selected" : ""}>Done</option>
-                  </select></td>`
+                ? `<td><span class="activity-status-label activity-status-${escapeHtml(status)}" data-activity-status-label>${escapeHtml(status === "not-started" ? "Not started" : status === "done" ? "Done" : "Ongoing")}</span></td><td><input class="activity-progress-input" type="number" min="0" max="100" step="1" value="${progress}" data-activity-progress="${escapeHtml(activityKey)}" data-saved-progress="${progress}" aria-label="Progress percentage for ${escapeHtml(getEquipmentActivityLabel(item.activity))} on ${escapeHtml(item.date)}"><span class="activity-progress-unit">%</span></td>`
                 : "";
               return `<tr class="${rowStatus ? `activity-status-row-${escapeHtml(rowStatus)}` : ""}">
                 <td>${escapeHtml(formatDate(item.date))}</td>
@@ -940,10 +957,10 @@ function renderMasterSchedule() {
                 <td>${escapeHtml(getEquipmentActivityLabel(item.activity))}</td>${statusControl}</tr>`;
             }).join("");
           const activityHeaders = workPackage === "MS04 Tower"
-            ? "<th>Date</th><th>Time</th><th>Scheduled activity</th><th>Status</th>"
+            ? "<th>Date</th><th>Time</th><th>Scheduled activity</th><th>Status</th><th>Progress (%)</th>"
             : "<th>Date</th><th>Time</th><th>Scheduled activity</th>";
           const emptyActivity = workPackage === "MS04 Tower"
-            ? '<tr><td colspan="4">No daily activities listed.</td></tr>'
+            ? '<tr><td colspan="5">No daily activities listed.</td></tr>'
             : '<tr><td colspan="3">No daily activities listed.</td></tr>';
           return `<tr>
             <td>${sequence}</td><td><strong>${escapeHtml(record.equipmentTag)}</strong></td>
@@ -979,25 +996,28 @@ function renderMasterSchedule() {
 }
 
 function saveActivityStatus(event) {
-  const select = event.target.closest("[data-activity-status]");
-  if (!select) return;
-  const status = select.value;
-  if (!["not-started", "ongoing", "done"].includes(status)) {
-    showToast("Choose a valid activity status.");
-    select.value = select.dataset.savedStatus;
+  const input = event.target.closest("[data-activity-progress]");
+  if (!input) return;
+  const progress = input.valueAsNumber;
+  if (!Number.isInteger(progress) || progress < 0 || progress > 100) {
+    showToast("Enter a whole-number progress value from 0 to 100.");
+    input.value = input.dataset.savedProgress;
     return;
   }
   const statuses = getActivityStatuses();
-  const key = select.dataset.activityStatus;
-  const previousStatus = select.dataset.savedStatus;
-  statuses[key] = status;
+  const key = input.dataset.activityProgress;
+  const status = statusForProgress(progress);
+  statuses[key] = { progress, status };
   if (!storeActivityStatuses(statuses)) {
-    select.value = previousStatus;
+    input.value = input.dataset.savedProgress;
     return;
   }
-  select.dataset.savedStatus = status;
-  select.className = `activity-status-select activity-status-${status}`;
-  select.closest("tr").className = `activity-status-row-${status}`;
+  input.dataset.savedProgress = String(progress);
+  const row = input.closest("tr");
+  const statusLabel = row.querySelector("[data-activity-status-label]");
+  statusLabel.textContent = status === "not-started" ? "Not started" : status === "done" ? "Done" : "Ongoing";
+  statusLabel.className = `activity-status-label activity-status-${status}`;
+  row.className = `activity-status-row-${status}`;
 }
 
 function renderDelayedEquipmentPanel(workPackage) { const panel = document.getElementById("delayed-equipment-panel"); if (!panel) return; if (!workPackage) { panel.innerHTML = '<p class="empty-note">Select a Work Package to check equipment delays.</p>'; return; } const today = localDateString(); const todayTime = new Date(today + "T00:00:00Z").getTime(); const records = getEquipmentRecords(workPackage).filter(record => record.maintenanceStart && record.maintenanceFinish && new Date(record.maintenanceStart + "T00:00:00Z").getTime() <= todayTime); const actualProgress = new Map(); getEquipmentActuals().filter(item => normalizeWorkPackage(item.workPackage) === workPackage && item.date <= today).sort((a,b) => a.date.localeCompare(b.date) || String(a.savedAt).localeCompare(String(b.savedAt))).forEach(item => Object.entries(item.progress || {}).forEach(([tag,value]) => { const progress=Number(value); if(Number.isFinite(progress) && progress>=0 && progress<=100) actualProgress.set(String(tag),progress); })); const missing=records.filter(record=>!actualProgress.has(String(record.equipmentTag))).length; const delayed=records.flatMap(record=>{const tag=String(record.equipmentTag);if(!actualProgress.has(tag))return [];const start=new Date(record.maintenanceStart+"T00:00:00Z").getTime();const finish=new Date(record.maintenanceFinish+"T00:00:00Z").getTime();if(!Number.isFinite(start)||!Number.isFinite(finish))return [];const planned=todayTime>=finish?100:Math.max(0,Math.min(100,(todayTime-start)/Math.max(1,finish-start)*100));const actual=actualProgress.get(tag);const behind=planned-actual;return behind>0.1?[{record,planned,actual,behind,finish}]:[];}).sort((a,b)=>b.behind-a.behind||a.finish-b.finish); if(!delayed.length){const note=missing?" "+missing+" scheduled equipment item"+(missing===1?" has":"s have")+" no actual progress recorded yet.":"";panel.innerHTML='<p class="empty-note">No confirmed delays as of '+escapeHtml(formatDate(today))+'.'+note+'</p>';return;} const summary='<p class="delay-summary">'+delayed.length+' equipment item'+(delayed.length===1?'':'s')+' behind plan · as of '+escapeHtml(formatDate(today))+(missing?' · '+missing+' without actual progress':'')+'</p>';const rows=delayed.map(item=>{const overdueDays=Math.floor((todayTime-item.finish)/86400000);const overdue=overdueDays>0?'<small class="delay-overdue">'+overdueDays+' days overdue</small>':'';return '<tr><td><strong>'+escapeHtml(item.record.equipmentTag)+'</strong></td><td>'+escapeHtml(item.record.area||item.record.unit||item.record.section||'—')+'</td><td>'+escapeHtml(formatDate(item.record.maintenanceFinish))+overdue+'</td><td>'+item.planned.toFixed(1)+'%</td><td>'+item.actual.toFixed(1)+'%</td><td><strong class="delay-variance">'+item.behind.toFixed(1)+' pp</strong></td></tr>';}).join('');panel.innerHTML=summary+'<div class="schedule-table-wrap"><table class="delay-table"><thead><tr><th>Equipment</th><th>Area / unit</th><th>Plan finish</th><th>Planned</th><th>Actual</th><th>Behind</th></tr></thead><tbody>'+rows+'</tbody></table></div>'; }  function renderActualEntryTable() {
@@ -1530,3 +1550,4 @@ if (!supabaseClient) {
 } else {
   startSharedWorkspace();
 }
+
