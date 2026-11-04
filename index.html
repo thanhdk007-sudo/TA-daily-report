@@ -6,34 +6,22 @@
   <meta name="theme-color" content="#102a43">
   <title>Turnaround Daily Report</title>
   <link rel="stylesheet" href="styles.css">
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="supabase-config.js"></script>
 </head>
 <body>
-  <section id="workspace-gate" class="workspace-gate" aria-labelledby="workspace-title">
-    <div class="workspace-card">
-      <p class="eyebrow">TEAM WORKSPACE</p>
-      <h1 id="workspace-title">Opening shared Daily Report</h1>
-      <p>Connecting to the workspace. Anyone with this link can view and edit shared data.</p>
-      <p id="workspace-feedback" class="workspace-feedback" role="status" aria-live="polite">Connecting…</p>
-      <button id="retry-connection-button" class="button button-primary button-block" type="button">Retry connection</button>
-    </div>
-  </section>
-  <header class="topbar" id="app-header" hidden>
+  <header class="topbar">
     <a class="brand" href="#" aria-label="Turnaround Daily Report home">
       <span class="brand-mark">TA</span>
       <span><strong>TURNAROUND</strong><small>DAILY REPORT</small></span>
     </a>
     <div class="topbar-right">
       <span class="status-dot"></span>
-      <span id="cloud-status">Connecting to shared workspace</span>
+      <span id="sync-status">Saved in this browser</span>
       <span class="topbar-divider"></span>
       <span id="today-label"></span>
-      <button class="button button-quiet button-small" id="share-workspace-button" type="button">↗ Share Workspace</button>
     </div>
   </header>
 
-  <main class="page-shell" id="app-main" hidden>
+  <main class="page-shell">
     <section class="page-heading">
       <div>
         <p class="eyebrow">OPERATIONS CONTROL</p>
@@ -65,7 +53,11 @@
       <div class="chart-wrap" id="curve-chart-wrap">
         <p class="empty-note">Select a Work Package to view progress.</p>
       </div>
-      <div class="chart-legend"><span><i class="legend-planned"></i> Planned</span><span><i class="legend-actual"></i> Actual</span><span><i class="legend-today"></i> Today</span><small>Planned weighted by MNT use days · actual weighted from equipment updates</small></div>       <section class="delay-panel" aria-labelledby="delay-panel-title">         <div class="delay-heading"><div><h3 id="delay-panel-title">Equipment behind schedule</h3><p>Compares saved actual completion with planned completion as of today.</p></div></div>         <div id="delayed-equipment-panel" aria-live="polite"><p class="empty-note">Select a Work Package to check equipment delays.</p></div>       </section>
+      <div class="chart-legend"><span><i class="legend-planned"></i> Planned</span><span><i class="legend-actual"></i> Actual</span><span><i class="legend-today"></i> Today</span><small>Planned weighted by MNT use days · actual weighted from equipment updates</small></div>
+      <section class="delay-panel" aria-labelledby="delay-panel-title">
+        <div class="delay-heading"><div><h3 id="delay-panel-title">Equipment behind schedule</h3><p>Compares saved actual completion with planned completion as of today.</p></div></div>
+        <div id="delayed-equipment-panel" aria-live="polite"><p class="empty-note">Select a Work Package to check equipment delays.</p></div>
+      </section>
       <details class="actual-entry-panel" hidden style="display: none !important">
         <summary class="actual-entry-summary">
           <div class="actual-entry-heading">
@@ -135,7 +127,7 @@
           </div>
         </details>
 
-                <section class="form-section" hidden>
+        <section class="form-section" hidden>
           <div class="section-heading section-heading-between">
             <div class="section-heading">
               <div class="section-icon">02</div>
@@ -166,7 +158,12 @@
               <thead><tr><th>Equipment</th><th>Section</th><th>Activity</th><th>Due date</th><th>Status</th><th>Remarks</th><th><span class="visually-hidden">Actions</span></th></tr></thead>
               <tbody id="today-activity-rows"></tbody>
             </table>
-          </div>           <div class="upload-images-action" style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:12px;padding:10px 12px;border:1px solid #e4eaf0;border-radius:7px;color:#718096;font-size:10px">             <span>Attach progress and work photos to this report.</span>             <a class="button button-outline button-small" style="white-space:nowrap;text-decoration:none" href="https://longsonpetro.sharepoint.com/sites/MTN-US-ME/Shared%20Documents/Forms/AllItems.aspx?id=%2Fsites%2FMTN%2DUS%2DME%2FShared%20Documents%2F03%2E%20MES%2F19%2E%20TAR%5F2027%2FMS03%5F04%20Drum%20and%20Tower%20Daily%20report&viewid=ac35776e%2Dcbcd%2D469e%2Db503%2D242f17bdf61d" target="_blank" rel="noopener noreferrer">↗ Upload images to SharePoint</a>           </div>         </section>
+          </div>
+          <div class="upload-images-action">
+            <span>Attach progress and work photos to this report.</span>
+            <a class="button button-outline button-small" href="https://longsonpetro.sharepoint.com/sites/MTN-US-ME/Shared%20Documents/Forms/AllItems.aspx?id=%2Fsites%2FMTN%2DUS%2DME%2FShared%20Documents%2F03%2E%20MES%2F19%2E%20TAR%5F2027%2FMS03%5F04%20Drum%20and%20Tower%20Daily%20report&viewid=ac35776e%2Dcbcd%2D469e%2Db503%2D242f17bdf61d" target="_blank" rel="noopener noreferrer">↗ Upload images to SharePoint</a>
+          </div>
+        </section>
 
         <section class="form-section">
           <div class="section-heading section-heading-between">
@@ -234,7 +231,6 @@
           <div class="preview-divider"></div>
           <p class="preview-callout"><span class="callout-icon">↗</span> Keep blockers, owners, and required-by times explicit for an actionable handover.</p>
           <div class="export-actions">
-            <button class="button button-outline button-block" id="export-csv-button" type="button">↓ Export for Excel (.csv)</button>
             <button class="button button-outline button-block" id="print-button" type="button">▣ Print / save as PDF</button>
           </div>
         </section>
@@ -247,10 +243,10 @@
             </div>
           </div>
           <div id="history-content">
-          <label class="archive-date-field" for="archive-date">View all saved details for a date
+          <label class="archive-date-field" for="archive-date">View saved reports for a date
             <input id="archive-date" type="date">
           </label>
-          <div id="saved-date-details" class="saved-date-details" aria-live="polite">
+          <div id="saved-date-summary" class="saved-date-summary" aria-live="polite">
             <p class="empty-note">Select a date to view its saved reports.</p>
           </div>
           <div class="archive-subheading">Latest saved reports</div>
@@ -262,8 +258,32 @@
     </div>
     <footer class="page-footer"><span>TURNAROUND DAILY REPORT</span><span>Plan clearly. Execute safely. Handover well.</span></footer>
   </main>
-  <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
   <script src="master-schedule.js"></script>
-  <script src="app.js?v=20261103-activity-overall"></script>
+  <script>
+    (() => {
+      const loadApp = () => {
+        const app = document.createElement("script");
+        app.src = "app.js?v=20261104-drum-activity-progress";
+        document.body.appendChild(app);
+      };
+      if (window.location.protocol === "file:") {
+        loadApp();
+        return;
+      }
+      const loadConfig = () => {
+        const config = document.createElement("script");
+        config.src = "supabase-config.js";
+        config.onload = loadApp;
+        config.onerror = loadApp;
+        document.head.appendChild(config);
+      };
+      const sdk = document.createElement("script");
+      sdk.src = "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2";
+      sdk.onload = loadConfig;
+      sdk.onerror = loadApp;
+      document.head.appendChild(sdk);
+    })();
+  </script>
 </body>
 </html>
