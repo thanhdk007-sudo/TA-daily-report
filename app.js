@@ -1029,6 +1029,10 @@ function renderMasterSchedule() {
   const caption = document.getElementById("equipment-schedule-caption");
   const records = getEquipmentRecords(workPackage);
   const activityStatuses = getActivityStatuses();
+  const expandedActivityTags = equipmentTable.dataset.workPackage === workPackage
+    ? new Set([...equipmentTable.querySelectorAll(".equipment-activities[open]")]
+      .map(details => details.dataset.equipmentTag))
+    : new Set();
   if (!workPackage) {
     title.textContent = "Equipment schedule";
     caption.textContent = "Select a Work Package to browse its equipment and planned dates.";
@@ -1089,7 +1093,7 @@ function renderMasterSchedule() {
             <td><input type="date" data-equipment-actual-date="actualStart" data-equipment-tag="${escapeHtml(record.equipmentTag)}" data-saved-value="${escapeHtml(record.actualStart || "")}" aria-label="Actual start for ${escapeHtml(record.equipmentTag)}" value="${escapeHtml(record.actualStart || "")}"></td>
             <td><input type="date" data-equipment-actual-date="actualFinish" data-equipment-tag="${escapeHtml(record.equipmentTag)}" data-saved-value="${escapeHtml(record.actualFinish || "")}" aria-label="Actual finish for ${escapeHtml(record.equipmentTag)}" value="${escapeHtml(record.actualFinish || "")}"></td>
             <td><strong data-equipment-overall-progress>${overallProgress === null ? "—" : `${overallProgress.toFixed(1)}%`}</strong></td>
-            <td><details class="equipment-activities"><summary>${record.timeline.length} ${record.timeline.length === 1 ? "activity" : "activities"}</summary>
+            <td><details class="equipment-activities" data-equipment-tag="${escapeHtml(record.equipmentTag)}"${expandedActivityTags.has(String(record.equipmentTag)) ? " open" : ""}><summary>${record.timeline.length} ${record.timeline.length === 1 ? "activity" : "activities"}</summary>
               <div class="equipment-activities-list"><table><thead><tr>${activityHeaders}</tr></thead><tbody>${activityRows || emptyActivity}</tbody></table></div>
             </details></td>
           </tr>`;
@@ -1097,6 +1101,7 @@ function renderMasterSchedule() {
       </table>`;
     }
   }
+  equipmentTable.dataset.workPackage = workPackage;
 
   const planTable = document.getElementById("master-plan-table");
   const planRows = masterSchedule.masterPlan.map(item => {
