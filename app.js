@@ -951,6 +951,13 @@ function getEquipmentOverallProgress(workPackage, record, activityStatuses = get
   return total / record.timeline.length;
 }
 
+function getEquipmentProgressClass(progress) {
+  if (progress === null) return "progress-unavailable";
+  if (progress === 0) return "progress-not-started";
+  if (progress === 100) return "progress-done";
+  return "progress-ongoing";
+}
+
 function renderDelayedEquipmentPanel(workPackage) {
   const panel = document.getElementById("delayed-equipment-panel");
   if (!panel) return;
@@ -1092,7 +1099,7 @@ function renderMasterSchedule() {
             <td>${escapeHtml(record.maintenanceFinish ? formatDate(record.maintenanceFinish) : "—")}</td>
             <td><input type="date" data-equipment-actual-date="actualStart" data-equipment-tag="${escapeHtml(record.equipmentTag)}" data-saved-value="${escapeHtml(record.actualStart || "")}" aria-label="Actual start for ${escapeHtml(record.equipmentTag)}" value="${escapeHtml(record.actualStart || "")}"></td>
             <td><input type="date" data-equipment-actual-date="actualFinish" data-equipment-tag="${escapeHtml(record.equipmentTag)}" data-saved-value="${escapeHtml(record.actualFinish || "")}" aria-label="Actual finish for ${escapeHtml(record.equipmentTag)}" value="${escapeHtml(record.actualFinish || "")}"></td>
-            <td><strong data-equipment-overall-progress>${overallProgress === null ? "—" : `${overallProgress.toFixed(1)}%`}</strong></td>
+            <td><strong class="equipment-overall-progress ${getEquipmentProgressClass(overallProgress)}" data-equipment-overall-progress>${overallProgress === null ? "—" : `${overallProgress.toFixed(1)}%`}</strong></td>
             <td><details class="equipment-activities" data-equipment-tag="${escapeHtml(record.equipmentTag)}"${expandedActivityTags.has(String(record.equipmentTag)) ? " open" : ""}><summary>${record.timeline.length} ${record.timeline.length === 1 ? "activity" : "activities"}</summary>
               <div class="equipment-activities-list"><table><thead><tr>${activityHeaders}</tr></thead><tbody>${activityRows || emptyActivity}</tbody></table></div>
             </details></td>
@@ -1154,7 +1161,9 @@ function saveActivityStatus(event) {
   if (overallProgress && activityInputs.length) {
     const total = [...activityInputs].reduce((sum, activityInput) =>
       sum + (Number(activityInput.value) || 0), 0);
-    overallProgress.textContent = `${(total / activityInputs.length).toFixed(1)}%`;
+    const progress = total / activityInputs.length;
+    overallProgress.textContent = `${progress.toFixed(1)}%`;
+    overallProgress.className = `equipment-overall-progress ${getEquipmentProgressClass(progress)}`;
   }
   renderDelayedEquipmentPanel(normalizeWorkPackage(
     document.getElementById("overview-work-package").value

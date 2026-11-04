@@ -140,6 +140,9 @@ h1 { margin-bottom: 5px; color: var(--navy); font: 800 27px Manrope, sans-serif;
 .master-equipment-table th, .master-plan-table th { padding: 8px 7px; background: #f3f7f8; color: #758696; text-transform: uppercase; letter-spacing: .06em; font-size: 7px; white-space: nowrap; }
 .master-equipment-table td, .master-plan-table td { padding: 8px 7px; border-bottom: 1px solid #edf1f4; color: #526779; font-size: 8px; vertical-align: top; }
 .master-equipment-table td strong { color: #344c60; font-size: 9px; }
+.master-equipment-table td strong.equipment-overall-progress { display: inline-block; padding: 3px 6px; border-radius: 4px; }
+.equipment-overall-progress.progress-ongoing { background: #fff1b8; }
+.equipment-overall-progress.progress-done { background: #dff3e5; }
 .master-equipment-table td:nth-child(5), .master-equipment-table td:nth-child(6) { white-space: nowrap; }
 .master-equipment-table input[data-equipment-actual-date] { box-sizing: border-box; width: 125px; min-width: 110px; padding: 3px 4px; border: 1px solid #d5dfe5; border-radius: 4px; color: #42586b; font: inherit; font-size: 8px; }
 .equipment-activities > summary { color: var(--teal); cursor: pointer; font-size: 8px; font-weight: 700; white-space: nowrap; }
