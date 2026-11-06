@@ -231,7 +231,7 @@
           <div class="preview-divider"></div>
           <p class="preview-callout"><span class="callout-icon">↗</span> Keep blockers, owners, and required-by times explicit for an actionable handover.</p>
           <div class="export-actions">
-            <button class="button button-outline button-block" id="print-button" type="button">▣ Print / save as PDF</button>
+            <button class="button button-outline button-block" id="print-button" type="button">▣ Print / save as PDF</button>             <button class="button button-outline button-block" id="export-image-button" type="button">▧ Download report image (JPG)</button>
           </div>
         </section>
         <section class="history-card">
@@ -264,7 +264,7 @@
     (() => {
       const loadApp = () => {
         const app = document.createElement("script");
-        app.src = "app.js?v=20261104-color-overall-progress";
+        app.src = "app.js?v=20261106-report-image";
         document.body.appendChild(app);
       };
       if (window.location.protocol === "file:") {
