@@ -1952,7 +1952,7 @@ form.addEventListener("change", updateDashboard);
 form.addEventListener("submit", saveReport);
 document.getElementById("save-report-button").addEventListener("click", saveReport);
 document.getElementById("add-package-button").addEventListener("click", () => addPackage());
-document.getElementById("print-button").addEventListener("click", printReport);
+document.getElementById("print-button").addEventListener("click", printReport); document.getElementById("export-image-button").addEventListener("click", exportReportImage);
 document.getElementById("reset-form-button").addEventListener("click", resetForm);
 document.getElementById("new-report-button").addEventListener("click", resetForm);
 document.getElementById("archive-date").addEventListener("input", renderSavedDateSummary);
