@@ -62,7 +62,7 @@ h1 { margin-bottom: 5px; color: var(--navy); font: 800 27px Manrope, sans-serif;
 .chart-axis-label { fill: #8a98a4; font: 10px "DM Sans", "Segoe UI", sans-serif; }
 .chart-line { fill: none; stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; }
 .chart-line-planned { stroke: #d29a48; stroke-dasharray: 6 5; }
-.chart-line-actual { stroke: #167d77; }
+.chart-line-actual { stroke: #167d77; stroke-dasharray: 6 5; }
 .chart-line-today { stroke: #d32f2f; stroke-width: 2; }
 .chart-today-label { fill: #d32f2f; font: 700 9px "DM Sans", "Segoe UI", sans-serif; }
 .chart-dot-planned { fill: #fff; stroke: #d29a48; stroke-width: 2; }
@@ -71,7 +71,7 @@ h1 { margin-bottom: 5px; color: var(--navy); font: 800 27px Manrope, sans-serif;
 .chart-legend span { display: inline-flex; align-items: center; gap: 6px; }
 .chart-legend i { width: 15px; height: 3px; display: inline-block; border-radius: 3px; }
 .legend-planned { background: repeating-linear-gradient(90deg, #d29a48 0 4px, transparent 4px 7px); }
-.legend-actual { background: #167d77; }
+.legend-actual { background: repeating-linear-gradient(90deg, #167d77 0 4px, transparent 4px 7px); }
 .legend-today { width: 3px !important; height: 12px !important; background: #d32f2f; }
 .chart-legend small { margin-left: auto; color: #96a2ad; font-size: 8px; }
 .delay-panel { margin-top: 16px; padding: 14px; border: 1px solid #e8edf1; border-radius: 8px; background: #fbfcfd; }
