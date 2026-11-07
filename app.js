@@ -1430,12 +1430,12 @@ function buildCurveSvg(plannedPoints, actualPoints, today = localDateString()) {
   const markers = actualPoints.map(point =>
     `<circle cx="${x(point.date)}" cy="${y(point.actualProgress)}" r="3.5" class="chart-dot-actual"><title>${escapeHtml(formatDate(point.date))} · Actual ${point.actualProgress.toFixed(1)}%</title></circle>`
   ).join("");
-  const todayX = x(today);
+
   const todayAnchor = todayX < left + 42 ? "start" : todayX > width - right - 42 ? "end" : "middle";
   const todayLabelX = todayAnchor === "start" ? todayX + 4 : todayAnchor === "end" ? todayX - 4 : todayX;
   const todayMarker = `<g class="chart-today-marker"><line x1="${todayX}" y1="${top}" x2="${todayX}" y2="${height - bottom}" class="chart-line-today"/>
-    <text x="${todayLabelX}" y="${top + 10}" text-anchor="${todayAnchor}" class="chart-today-label">Today</text>
-    <title>Today · ${escapeHtml(formatDate(today))}</title></g>`;
+      const todayX = x(today);   const todayLabel = formatDate(today).split("/").slice(0, 2).join("-");
+    <text x="${todayLabelX}" y="${top + 10}" text-anchor="${todayAnchor}" class="chart-today-label">${escapeHtml(todayLabel)}</text>`;
   const actualLine = actualPoints.length > 1 ? `<path d="${actual}" class="chart-line chart-line-actual"/>` : "";
   const actualNotice = actualPoints.length
     ? ""
@@ -1854,7 +1854,7 @@ function reportDocument(report) {
   const actualPoints = workPackage ? buildActualProgress(workPackage, schedule) : [];
   const progressCurve = plannedPoints.length
     ? `<div class="curve-wrap">${buildCurveSvg(plannedPoints, actualPoints)}</div>
-      <div class="curve-legend"><span><i class="legend-planned"></i> Planned</span><span><i class="legend-actual"></i> Actual</span><span><i class="legend-today"></i> Today</span></div>`
+      <div class="curve-legend"><span><i class="legend-planned"></i> Planned</span><span><i class="legend-actual"></i> Actual</span><span><i <title>Current date · ${escapeHtml(formatDate(today))}</title></g></div>`
     : '<p class="empty-note">No maintenance plan data is available for this Work Package.</p>';
   const detail = (label, value) => `<div class="detail"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value || "—")}</strong></div>`;
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Maintenance UPS-MES</title>
@@ -1872,12 +1872,12 @@ function reportDocument(report) {
       .chart-grid-line{stroke:#e9eef2;stroke-width:1}.chart-axis-label{fill:#738391;font:10px Arial,sans-serif}
       .chart-line{fill:none;stroke-width:2.5;stroke-linecap:round;stroke-linejoin:round}
       .chart-line-planned{stroke:#d29a48;stroke-dasharray:6 5}.chart-line-actual{stroke:#167d77}
-      .chart-line-today{stroke:#536879;stroke-width:1.5;stroke-dasharray:4 4}.chart-today-label{fill:#536879;font:700 9px Arial,sans-serif}
+      class="legend-today"></i> Current date</span>
       .chart-dot-actual{fill:#167d77;stroke:#fff;stroke-width:1.5}
       .curve-legend{display:flex;align-items:center;gap:16px;margin:0 12px;color:#607487;font-size:9px}
       .curve-legend span{display:inline-flex;align-items:center;gap:6px}.curve-legend i{width:15px;height:3px;display:inline-block;border-radius:3px}
       .curve-legend .legend-planned{background:repeating-linear-gradient(90deg,#d29a48 0 4px,transparent 4px 7px)}
-      .curve-legend .legend-actual{background:#167d77}.curve-legend .legend-today{width:3px;height:12px;background:repeating-linear-gradient(180deg,#536879 0 3px,transparent 3px 5px)}
+      .chart-line-today{stroke:#d32f2f;stroke-width:2}.chart-today-label{fill:#d32f2f;font:700 9px Arial,sans-serif}
       table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:8px;border-bottom:1px solid #e4eaf0}td{white-space:pre-wrap;vertical-align:top}
       th{background:#f1f5f7;color:#5a6c7b;font-size:9px;text-transform:uppercase;letter-spacing:.5px}
       .narrative{margin:0 0 11px;white-space:pre-wrap;line-height:1.55}.narrative strong{display:block;color:#43576a;font-size:10px;margin-bottom:4px}
