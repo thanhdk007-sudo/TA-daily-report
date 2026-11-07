@@ -1431,12 +1431,13 @@ function buildCurveSvg(plannedPoints, actualPoints, today = localDateString()) {
     `<circle cx="${x(point.date)}" cy="${y(point.actualProgress)}" r="3.5" class="chart-dot-actual"><title>${escapeHtml(formatDate(point.date))} · Actual ${point.actualProgress.toFixed(1)}%</title></circle>`
   ).join("");
 
+  const todayX = x(today);
+  const todayLabel = formatDate(today).split("/").slice(0, 2).join("-");
   const todayAnchor = todayX < left + 42 ? "start" : todayX > width - right - 42 ? "end" : "middle";
   const todayLabelX = todayAnchor === "start" ? todayX + 4 : todayAnchor === "end" ? todayX - 4 : todayX;
   const todayMarker = `<g class="chart-today-marker"><line x1="${todayX}" y1="${top}" x2="${todayX}" y2="${height - bottom}" class="chart-line-today"/>
-      const todayX = x(today);   const todayLabel = formatDate(today).split("/").slice(0, 2).join("-");
-    <text x="${todayLabelX}" y="${top + 10}" text-anchor="${todayAnchor}" class="chart-today-label">${escapeHtml(todayLabel)}</text>`;
-  const actualLine = actualPoints.length > 1 ? `<path d="${actual}" class="chart-line chart-line-actual"/>` : "";
+    <text x="${todayLabelX}" y="${top + 10}" text-anchor="${todayAnchor}" class="chart-today-label">${escapeHtml(todayLabel)}</text>
+    <title>Current date · ${escapeHtml(formatDate(today))}</title></g>`;  const actualLine = actualPoints.length > 1 ? `<path d="${actual}" class="chart-line chart-line-actual"/>` : "";
   const actualNotice = actualPoints.length
     ? ""
     : `<text x="${width / 2}" y="${top + 16}" text-anchor="middle" class="chart-axis-label">Enter actual equipment progress to display the actual curve</text>`;
