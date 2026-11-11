@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#102a43">
   <title>Turnaround Daily Report</title>
-  <link rel="stylesheet" href="styles.css?v=20261107-actual-solid-green">
+  <link rel="stylesheet" href="styles.css?v=20261111-issue-status">
 </head>
 <body>
   <header class="topbar">
@@ -34,17 +34,44 @@
       </div>
     </section>
 
-    <section class="overview-card" aria-labelledby="overview-title">
-      <div class="overview-header">
-        <div>
-          <p class="eyebrow">TURNAROUND OVERVIEW</p>
-          <h2 id="overview-title">Progress S-curve</h2>
-          <p class="overview-copy">Compare planned and actual cumulative progress from saved daily reports.</p>
+    <section class="overview-card dashboard-overview" aria-labelledby="overview-title">
+      <div class="overview-header dashboard-heading">
+        <div class="dashboard-title">
+          <p class="eyebrow">DRUM & TOWER TURNAROUND</p>
+          <h2 id="overview-title">Package progress</h2>
+          <p class="overview-copy">Track maintenance scope, execution and schedule performance for MS03 and MS04.</p>
         </div>
         <div class="overview-filters">
           <label class="field"><span>Work Package</span><select id="overview-work-package"><option value="">Select work package</option><option>MS03 Drum</option><option>MS04 Tower</option></select></label>
         </div>
       </div>
+      <div class="dashboard-date-strip"><span>●</span> PACKAGE PERFORMANCE <strong id="dashboard-status-date"></strong></div>
+      <div class="package-comparison-grid" aria-label="Drum and tower package comparison">
+        <button class="package-comparison-card package-drum" type="button" data-dashboard-package="MS03 Drum" aria-pressed="false">
+          <span class="package-card-heading"><span class="package-code">MS03</span><span class="package-kind">Drum package</span><span class="package-equipment-count"><strong id="dashboard-ms03-equipment">—</strong> equipment</span></span>
+          <span class="package-card-metrics">
+            <span class="package-progress-metric"><span>Plan to date</span><strong id="dashboard-ms03-plan">—</strong><span class="package-progress-track"><i id="dashboard-ms03-plan-bar"></i></span></span>
+            <span class="package-progress-metric"><span>Actual progress</span><strong id="dashboard-ms03-actual">—</strong><span class="package-progress-track"><i id="dashboard-ms03-actual-bar"></i></span></span>
+          </span>
+          <span class="package-card-footer"><span>Schedule duration <strong id="dashboard-ms03-days">—</strong> days</span><span>Plan finish <strong id="dashboard-ms03-finish">—</strong></span></span>
+        </button>
+        <button class="package-comparison-card package-tower" type="button" data-dashboard-package="MS04 Tower" aria-pressed="false">
+          <span class="package-card-heading"><span class="package-code">MS04</span><span class="package-kind">Tower package</span><span class="package-equipment-count"><strong id="dashboard-ms04-equipment">—</strong> equipment</span></span>
+          <span class="package-card-metrics">
+            <span class="package-progress-metric"><span>Plan to date</span><strong id="dashboard-ms04-plan">—</strong><span class="package-progress-track"><i id="dashboard-ms04-plan-bar"></i></span></span>
+            <span class="package-progress-metric"><span>Actual progress</span><strong id="dashboard-ms04-actual">—</strong><span class="package-progress-track"><i id="dashboard-ms04-actual-bar"></i></span></span>
+          </span>
+          <span class="package-card-footer"><span>Schedule duration <strong id="dashboard-ms04-days">—</strong> days</span><span>Plan finish <strong id="dashboard-ms04-finish">—</strong></span></span>
+        </button>
+      </div>
+      <div class="selected-package-heading"><div><h3 id="dashboard-selected-title">Select a package to view its schedule</h3><p>Package-specific workload and schedule indicators</p></div><span id="dashboard-selected-date"></span></div>
+      <div class="dashboard-kpis" aria-label="Selected package details">
+        <article class="dashboard-kpi kpi-navy"><span>Equipment in scope</span><strong id="dashboard-equipment-total">—</strong><small>Registered in this package</small></article>
+        <article class="dashboard-kpi kpi-orange"><span>Schedule duration</span><strong id="dashboard-use-days">—</strong><small>From first planned start to final finish</small></article>
+        <article class="dashboard-kpi kpi-green"><span>Equipment complete</span><strong id="dashboard-done-total">—</strong><small id="dashboard-done-caption">Equipment with actual finish date</small></article>
+        <article class="dashboard-kpi kpi-red"><span>Equipment behind plan</span><strong id="dashboard-delayed-total">—</strong><small>Based on planned vs actual progress</small></article>
+      </div>
+      <div class="dashboard-chart-heading"><div><h3>Maintenance progress curve</h3><p>Weighted planned and actual progress across the selected package schedule.</p></div><span class="dashboard-chart-date" id="dashboard-chart-date"></span></div>
       <div class="overview-stats">
         <div><span>Saved reports</span><strong id="overview-report-count">0</strong></div>
         <div><span>Latest report</span><strong id="overview-latest-date">—</strong></div>
@@ -53,11 +80,7 @@
       <div class="chart-wrap" id="curve-chart-wrap">
         <p class="empty-note">Select a Work Package to view progress.</p>
       </div>
-      <div class="chart-legend"><span><i class="legend-planned"></i> Planned</span><span><i class="legend-actual"></i> Actual</span><span><i class="legend-today"></i> Current date</span><small>Planned weighted by MNT use days · actual weighted from equipment updates</small></div>
-      <section class="delay-panel" aria-labelledby="delay-panel-title">
-        <div class="delay-heading"><div><h3 id="delay-panel-title">Equipment behind schedule</h3><p>Compares saved actual completion with planned completion as of today.</p></div></div>
-        <div id="delayed-equipment-panel" aria-live="polite"><p class="empty-note">Select a Work Package to check equipment delays.</p></div>
-      </section>
+      <div class="chart-legend"><span><i class="legend-planned"></i> Planned</span><span><i class="legend-actual"></i> Actual</span><span><i class="legend-today"></i> Current date</span><small>Planned and actual weighted by MNT use days · actual from Daily activities Overall progress</small></div>
       <details class="actual-entry-panel" hidden style="display: none !important">
         <summary class="actual-entry-summary">
           <div class="actual-entry-heading">
@@ -79,9 +102,35 @@
         <div class="master-schedule-content">
           <div class="schedule-section-heading">
             <div><h3 id="equipment-schedule-title">Equipment schedule</h3><p id="equipment-schedule-caption">Select a Work Package to browse its equipment and planned dates.</p></div>
-            <label class="schedule-search"><span class="visually-hidden">Search equipment schedule</span><input id="master-schedule-search" type="search" placeholder="Search equipment, area, activity..."></label>
+            <div class="schedule-controls">
+              <button class="button button-primary button-small" id="add-equipment-button" type="button" disabled>＋ Add equipment</button>
+              <label class="schedule-search"><span class="visually-hidden">Search equipment schedule</span><input id="master-schedule-search" type="search" placeholder="Search equipment, area, activity..."></label>
+            </div>
           </div>
+          <form id="equipment-editor" class="equipment-editor" hidden>
+            <div class="equipment-editor-heading"><strong id="equipment-editor-title">Add equipment</strong><span>Equipment details and plan dates</span></div>
+            <div class="equipment-editor-grid">
+              <label class="field"><span>Equipment tag <b>*</b></span><input name="equipmentTag" required maxlength="80"></label>
+              <label class="field"><span>Area</span><input name="area"></label>
+              <label class="field"><span>Unit</span><input name="unit"></label>
+              <label class="field"><span>Package</span><input name="packageNo"></label>
+              <label class="field"><span>Section</span><input name="section"></label>
+              <label class="field"><span>MNT start plan</span><input name="maintenanceStart" type="date"></label>
+              <label class="field"><span>MNT finish plan</span><input name="maintenanceFinish" type="date"></label>
+              <label class="field"><span>Actual start</span><input name="actualStart" type="date"></label>
+              <label class="field"><span>Actual finish</span><input name="actualFinish" type="date"></label>
+              <label class="field"><span>MNT use days</span><input name="maintenanceUseDays" type="number" min="0" step="0.1"></label>
+            </div>
+            <div class="equipment-editor-actions">
+              <button class="button button-primary button-small" type="submit">Save equipment</button>
+              <button class="button button-outline button-small" id="cancel-equipment-edit" type="button">Cancel</button>
+            </div>
+          </form>
           <div id="equipment-schedule-table" class="schedule-table-wrap"><p class="empty-note">Select a Work Package to view its schedule.</p></div>
+          <details id="hidden-equipment-panel" class="hidden-equipment-panel" hidden>
+            <summary>Removed equipment (<span id="hidden-equipment-count">0</span>)</summary>
+            <ul id="hidden-equipment-list"></ul>
+          </details>
           <details class="summary-plan-details">
             <summary>High-level Master Schedule Plan <span>42 activities across 5 options</span></summary>
             <div id="master-plan-table" class="schedule-table-wrap"></div>
@@ -148,15 +197,18 @@
           <div class="section-heading section-heading-between">
             <div class="section-heading">
               <div class="section-icon">02</div>
-              <div><h2>Work completed this shift</h2><p>Add activities that matter to the handover, with status and remarks.</p></div>
+              <div><h2>Daily Activity Description</h2><p>Report today's work and tomorrow's plan for each equipment and section.</p></div>
             </div>
-            <button class="button button-outline button-small" id="add-today-activity" type="button">＋ Add activity</button>
+            <button class="button button-outline button-small" id="add-work-activity" type="button">＋ Add activity</button>
           </div>
           <div class="table-wrap">
-            <p class="empty-note daily-table-empty" data-empty-for="today-activity-rows">No work updates added. Add a row only when there is work to report.</p>
+            <p class="empty-note daily-table-empty" data-empty-for="work-activity-rows">No work updates added. Add a row only when there is work to report.</p>
             <table class="daily-entry-table narrative-entry-table" hidden>
-              <thead><tr><th>Equipment</th><th>Section</th><th>Activity</th><th>Due date</th><th>Status</th><th>Remarks</th><th><span class="visually-hidden">Actions</span></th></tr></thead>
-              <tbody id="today-activity-rows"></tbody>
+              <thead>
+                <tr><th rowspan="2">Equipment</th><th rowspan="2">Section</th><th colspan="2" class="activity-description-heading">Activity Description</th><th rowspan="2">Remark</th><th rowspan="2"><span class="visually-hidden">Actions</span></th></tr>
+                <tr><th>Work Done Today</th><th>Work to be Tomorrow</th></tr>
+              </thead>
+              <tbody id="work-activity-rows"></tbody>
             </table>
           </div>
           <div class="upload-images-action">
@@ -169,31 +221,14 @@
           <div class="section-heading section-heading-between">
             <div class="section-heading">
               <div class="section-icon">03</div>
-              <div><h2>Next shift plan</h2><p>List the next shift's priorities, target dates, and status.</p></div>
-            </div>
-            <button class="button button-outline button-small" id="add-tomorrow-activity" type="button">＋ Add activity</button>
-          </div>
-          <div class="table-wrap">
-            <p class="empty-note daily-table-empty" data-empty-for="tomorrow-activity-rows">No next-shift activities added. Add a row only when needed.</p>
-            <table class="daily-entry-table narrative-entry-table" hidden>
-              <thead><tr><th>Equipment</th><th>Section</th><th>Activity</th><th>Due date</th><th>Status</th><th>Remarks</th><th><span class="visually-hidden">Actions</span></th></tr></thead>
-              <tbody id="tomorrow-activity-rows"></tbody>
-            </table>
-          </div>
-        </section>
-
-        <section class="form-section">
-          <div class="section-heading section-heading-between">
-            <div class="section-heading">
-              <div class="section-icon">04</div>
-              <div><h2>Open issues & actions</h2><p>Record only items requiring follow-up, with an owner and due date.</p></div>
+              <div><h2>Open issues & actions</h2><p>Track follow-up items, their owner, due date, and status.</p></div>
             </div>
             <button class="button button-outline button-small" id="add-issue" type="button">＋ Add issue</button>
           </div>
           <div class="table-wrap">
             <p class="empty-note daily-table-empty" data-empty-for="issue-rows">No open issues. Add an item only when follow-up is required.</p>
             <table class="daily-entry-table issue-entry-table" hidden>
-              <thead><tr><th>No.</th><th>Issue</th><th>Countermeasure</th><th>Action by</th><th>Due date</th><th><span class="visually-hidden">Actions</span></th></tr></thead>
+              <thead><tr><th>No.</th><th>Issue</th><th>Countermeasure</th><th>Action by</th><th>Due date</th><th>Status</th><th>Remark</th><th><span class="visually-hidden">Actions</span></th></tr></thead>
               <tbody id="issue-rows"></tbody>
             </table>
           </div>
@@ -201,7 +236,7 @@
 
         <section class="form-section">
           <div class="section-heading">
-            <div class="section-icon">05</div>
+            <div class="section-icon">04</div>
             <div><h2>Handover notes</h2><p>Use for critical HSE, quality, resource, or decision notes not listed above.</p></div>
           </div>
           <label class="field"><span>Key handover / decision required</span><textarea id="handover-summary" name="handoverSummary" rows="3" placeholder="Add critical information not captured in the tables above. Leave blank if none."></textarea></label>
@@ -231,7 +266,8 @@
           <div class="preview-divider"></div>
           <p class="preview-callout"><span class="callout-icon">↗</span> Keep blockers, owners, and required-by times explicit for an actionable handover.</p>
           <div class="export-actions">
-            <button class="button button-outline button-block" id="print-button" type="button">▣ Print / save as PDF</button>             <button class="button button-outline button-block" id="export-image-button" type="button">▧ Download report image (JPG)</button>
+            <button class="button button-outline button-block" id="print-button" type="button">▣ Print / save as PDF</button>
+            <button class="button button-outline button-block" id="export-image-button" type="button">▧ Download report image (JPG)</button>
           </div>
         </section>
         <section class="history-card">
@@ -264,7 +300,7 @@
     (() => {
       const loadApp = () => {
         const app = document.createElement("script");
-        app.src = "app.js?v=20261107-actual-solid-green";
+        app.src = "app.js?v=20261111-dashboard-export-style";
         document.body.appendChild(app);
       };
       if (window.location.protocol === "file:") {

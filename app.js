@@ -174,6 +174,7 @@ async function refreshSharedWorkspace(payload, tableName) {
     await loadSharedWorkspace();
     renderHistory();
     renderOverview();
+    updateActivityEquipmentOptions();
     setSyncStatus("Shared data synced");
   } catch (error) {
     console.error("Could not refresh shared turnaround data.", error);
@@ -216,6 +217,7 @@ async function startSharedWorkspace() {
     cloudReady = true;
     renderHistory();
     renderOverview();
+    updateActivityEquipmentOptions();
     setSyncStatus("Shared data synced");
     subscribeToSharedWorkspace();
   } catch (error) {
@@ -446,16 +448,23 @@ function storeActivityStatuses(statuses) {
   }
 }
 
-function getEquipmentRecords(workPackage) {
+function getEquipmentRecords(workPackage, includeHidden = false) {
   const overrides = new Map(
     getEquipmentOverrides()
       .filter(item => normalizeWorkPackage(item.workPackage) === workPackage)
       .map(item => [String(item.equipmentTag), item])
   );
-  return (masterSchedule.equipment[workPackage] || []).map(record => {
+  const records = (masterSchedule.equipment[workPackage] || []).map(record => {
     const override = overrides.get(String(record.equipmentTag));
     return override ? { ...record, ...override } : record;
   });
+  const existingTags = new Set(records.map(record => String(record.equipmentTag)));
+  overrides.forEach((override, tag) => {
+    if (override.custom && !existingTags.has(tag)) {
+      records.push({ timeline: [], ...override });
+    }
+  });
+  return includeHidden ? records : records.filter(record => !record.hidden);
 }
 
 function getPackageSectionLabel(record) {
@@ -545,9 +554,20 @@ function collectReport() {
     };
   }).filter(item => item.name || item.area);
   report.overallActivities = collectRows("overall-activity-rows", ["equipment", "plannedOpen", "actualOpen", "planClose", "actualClose"]);
-  report.todayActivities = collectRows("today-activity-rows", ["equipment", "section", "activity", "dueDate", "status", "remarks"]);
-  report.tomorrowActivities = collectRows("tomorrow-activity-rows", ["equipment", "section", "activity", "dueDate", "status", "remarks"]);
-  report.issues = collectRows("issue-rows", ["issue", "countermeasure", "actionBy", "dueDate"]);
+  report.workActivities = collectRows("work-activity-rows", [
+    "equipment", "section", "todayActivity", "tomorrowActivity", "remark",
+    "todayDueDate", "todayStatus", "todayRemarks", "tomorrowDueDate", "tomorrowStatus", "tomorrowRemarks"
+  ]);
+  const legacyActivities = prefix => report.workActivities.flatMap(item => {
+    const activity = {
+      equipment: item.equipment, section: item.section, activity: item[`${prefix}Activity`],
+      dueDate: item[`${prefix}DueDate`], status: item[`${prefix}Status`], remarks: item[`${prefix}Remarks`]
+    };
+    return activity.activity || activity.dueDate || activity.status || activity.remarks ? [activity] : [];
+  });
+  report.todayActivities = legacyActivities("today");
+  report.tomorrowActivities = legacyActivities("tomorrow");
+  report.issues = collectRows("issue-rows", ["issue", "countermeasure", "actionBy", "dueDate", "status", "remark"]);
   return report;
 }
 
@@ -566,7 +586,10 @@ function equipmentOptions(selected = "") {
   const workPackage = normalizeWorkPackage(document.getElementById("work-package").value);
   const equipment = getEquipmentRecords(workPackage);
   const prompt = workPackage ? "Select equipment" : "Select Work Package first";
-  return `<option value="">${prompt}</option>${equipment.map(record => {
+  const unavailable = selected && !equipment.some(record => String(record.equipmentTag) === selected)
+    ? `<option value="${escapeHtml(selected)}" selected>${escapeHtml(selected)} (not in selected Work Package)</option>`
+    : "";
+  return `<option value="">${prompt}</option>${unavailable}${equipment.map(record => {
     const tag = String(record.equipmentTag);
     const selectedAttribute = tag === selected ? " selected" : "";
     const section = record.unit || record.section || record.area;
@@ -594,11 +617,6 @@ function clearEquipmentMilestoneDates(row) {
   ["plannedOpen", "actualOpen", "planClose", "actualClose"].forEach(key => {
     row.querySelector(`[data-key=${key}]`).value = "";
   });
-}
-
-function activityStatusOptions(selected = "") {
-  const statuses = ["Plan", "Ongoing", "Completed", "Waiting", "On hold"];
-  return `<option value="">Select status</option>${statuses.map(status => `<option${status === selected ? " selected" : ""}>${status}</option>`).join("")}`;
 }
 
 function activitySectionOptions(selected = "") {
@@ -637,28 +655,58 @@ function activityRow(tbodyId, data = {}) {
   syncDailyTableEmptyState(tbodyId);
 }
 
-function narrativeActivityRow(tbodyId, data = {}) {
+function workActivityRow(data = {}) {
   const row = document.createElement("tr");
   row.innerHTML = `<td>${equipmentSelectMarkup(data.equipment || "")}</td>
     <td><select data-key="section" aria-label="Section">${activitySectionOptions(data.section || "")}</select></td>
-    <td><textarea data-key="activity" aria-label="Activity" rows="2" placeholder="One activity per line">${escapeHtml(data.activity || "")}</textarea></td>
-    <td><input data-key="dueDate" aria-label="Due date" type="date" value="${escapeHtml(data.dueDate || "")}"></td>
-    <td><select data-key="status" aria-label="Activity status">${activityStatusOptions(data.status || "")}</select></td>
-    <td><input data-key="remarks" aria-label="Remarks" type="text" placeholder="Remarks" value="${escapeHtml(data.remarks || "")}"></td>
-    <td><button class="remove-row" type="button" aria-label="Remove activity">×</button></td>`;
+    <td><textarea data-key="todayActivity" aria-label="Work Done Today" rows="2" placeholder="One activity per line">${escapeHtml(data.todayActivity || "")}</textarea></td>
+    <td><textarea data-key="tomorrowActivity" aria-label="Work to be Tomorrow" rows="2" placeholder="One activity per line">${escapeHtml(data.tomorrowActivity || "")}</textarea></td>
+    <td><textarea data-key="remark" aria-label="Remark" rows="2" placeholder="Optional remark">${escapeHtml(data.remark || "")}</textarea></td>
+    <td>${["todayDueDate", "todayStatus", "todayRemarks", "tomorrowDueDate", "tomorrowStatus", "tomorrowRemarks"]
+      .map(key => `<input type="hidden" data-key="${key}" value="${escapeHtml(data[key] || "")}">`).join("")}
+      <button class="remove-row" type="button" aria-label="Remove activity">×</button></td>`;
   row.querySelector("[data-key=equipment]").value = data.equipment || "";
   bindEditableRow(row);
-  document.getElementById(tbodyId).appendChild(row);
-  syncDailyTableEmptyState(tbodyId);
+  document.getElementById("work-activity-rows").appendChild(row);
+  syncDailyTableEmptyState("work-activity-rows");
+}
+
+function getReportWorkActivities(report) {
+  if (Array.isArray(report.workActivities)) return report.workActivities;
+  const convert = (item, prefix) => ({
+    equipment: item.equipment || "", section: item.section || "",
+    [`${prefix}Activity`]: item.activity || "", [`${prefix}DueDate`]: item.dueDate || "",
+    [`${prefix}Status`]: item.status || "", [`${prefix}Remarks`]: item.remarks || ""
+  });
+  return [
+    ...(report.todayActivities || []).map(item => convert(item, "today")),
+    ...(report.tomorrowActivities || []).map(item => convert(item, "tomorrow"))
+  ];
+}
+
+function getWorkActivityExportRows(report) {
+  return getReportWorkActivities(report).map(item => ({
+    equipment: item.equipment || "",
+    section: item.section || "",
+    today: item.todayActivity || "",
+    tomorrow: item.tomorrowActivity || "",
+    remark: item.remark || ""
+  }));
 }
 
 function issueRow(data = {}) {
   const row = document.createElement("tr");
+  const status = data.status || "";
+  const previousStatus = status && !["Pending", "Done"].includes(status)
+    ? `<option value="${escapeHtml(status)}" selected>${escapeHtml(status)}</option>`
+    : "";
   row.innerHTML = `<td class="issue-number"></td>
     <td><textarea data-key="issue" aria-label="Issue" rows="2" placeholder="Describe issue">${escapeHtml(data.issue || "")}</textarea></td>
     <td><textarea data-key="countermeasure" aria-label="Countermeasure" rows="2" placeholder="Action / countermeasure">${escapeHtml(data.countermeasure || "")}</textarea></td>
     <td><select data-key="actionBy" aria-label="Action by"><option value="">Select owner</option>${preparerNames.map(name => `<option${data.actionBy === name ? " selected" : ""}>${name}</option>`).join("")}</select></td>
     <td><input data-key="dueDate" aria-label="Issue due date" type="date" value="${escapeHtml(data.dueDate || "")}"></td>
+    <td><select data-key="status" aria-label="Issue status"><option value="">Select status</option>${previousStatus}<option value="Pending"${status === "Pending" ? " selected" : ""}>Pending</option><option value="Done"${status === "Done" ? " selected" : ""}>Done</option></select></td>
+    <td><textarea data-key="remark" aria-label="Issue remark" rows="2" placeholder="Optional remark">${escapeHtml(data.remark || "")}</textarea></td>
     <td><button class="remove-row" type="button" aria-label="Remove issue">×</button></td>`;
   bindEditableRow(row);
   document.getElementById("issue-rows").appendChild(row);
@@ -677,9 +725,11 @@ function syncDailyTableEmptyState(tbodyId) {
 
 function bindEditableRow(row) {
   row.querySelector(".remove-row").addEventListener("click", () => {
+    const tbodyId = row.closest("tbody").id;
     row.remove();
-    if (row.closest("tbody").id === "issue-rows") updateIssueNumbers();
-    syncDailyTableEmptyState(row.closest("tbody").id);
+    if (tbodyId === "issue-rows") updateIssueNumbers();
+    syncDailyTableEmptyState(tbodyId);
+    updateDashboard();
   });
   row.addEventListener("input", updateDashboard);
   row.addEventListener("change", updateDashboard);
@@ -693,24 +743,24 @@ function updateIssueNumbers() {
 
 function renderDailyRows(report = {}) {
   for (const [tbodyId, values, factory] of [
-    ["overall-activity-rows", report.overallActivities || [], activityRow],
-    ["today-activity-rows", report.todayActivities || [], narrativeActivityRow],
-    ["tomorrow-activity-rows", report.tomorrowActivities || [], narrativeActivityRow]
+    ["overall-activity-rows", report.overallActivities || [], activityRow]
   ]) {
     const tbody = document.getElementById(tbodyId);
     tbody.innerHTML = "";
     values.forEach(item => factory(tbodyId, item));
   }
+  document.getElementById("work-activity-rows").innerHTML = "";
+  getReportWorkActivities(report).forEach(workActivityRow);
   const issueBody = document.getElementById("issue-rows");
   issueBody.innerHTML = "";
   (report.issues || []).forEach(issueRow);
   updateIssueNumbers();
-  ["overall-activity-rows", "today-activity-rows", "tomorrow-activity-rows", "issue-rows"]
+  ["overall-activity-rows", "work-activity-rows", "issue-rows"]
     .forEach(syncDailyTableEmptyState);
 }
 
 function updateActivityEquipmentOptions() {
-  document.querySelectorAll("#overall-activity-rows [data-key=equipment], #today-activity-rows [data-key=equipment], #tomorrow-activity-rows [data-key=equipment]").forEach(select => {
+  document.querySelectorAll("#overall-activity-rows [data-key=equipment], #work-activity-rows [data-key=equipment]").forEach(select => {
     const selected = select.value;
     const row = select.closest("tr");
     select.innerHTML = equipmentOptions(selected);
@@ -719,8 +769,12 @@ function updateActivityEquipmentOptions() {
     if (record) {
       select.value = selected;
       if (row.closest("tbody").id === "overall-activity-rows") applyEquipmentPlanDates(row, record);
+    } else if (selected && getEquipmentRecords(
+      normalizeWorkPackage(document.getElementById("work-package").value), true
+    ).some(item => item.hidden && String(item.equipmentTag) === selected)) {
+      select.value = selected;
     } else {
-      select.value = "";
+      select.value = row.closest("tbody").id === "work-activity-rows" ? selected : "";
       if (row.closest("tbody").id === "overall-activity-rows") {
         clearEquipmentMilestoneDates(row);
       }
@@ -856,15 +910,16 @@ function renderOverview() {
 
   renderMasterSchedule();
   renderActualEntryTable();
-  renderDelayedEquipmentPanel(workPackage);
   const chart = document.getElementById("curve-chart-wrap");
+  renderPackageComparisonCards(workPackage);
+  const schedule = workPackage ? getEquipmentRecords(workPackage) : [];
+  const plannedPoints = buildPlannedProgress(schedule);
+  const actualPoints = workPackage ? buildActualProgress(workPackage, schedule) : [];
+  renderDashboardMetrics(workPackage, schedule, plannedPoints, actualPoints);
   if (!workPackage) {
     chart.innerHTML = '<p class="empty-note">Select a Work Package to view progress.</p>';
     return;
   }
-  const schedule = getEquipmentRecords(workPackage);
-  const plannedPoints = buildPlannedProgress(schedule);
-  const actualPoints = buildActualProgress(workPackage, schedule);
   document.getElementById("overview-latest-actual").textContent = actualPoints.length
     ? `${actualPoints[actualPoints.length - 1].actualProgress.toFixed(1)}%`
     : "—";
@@ -874,8 +929,117 @@ function renderOverview() {
   }
   chart.innerHTML = buildCurveSvg(plannedPoints, actualPoints);
   document.getElementById("actual-entry-feedback").textContent = actualPoints.length
-    ? `${actualPoints.length} saved actual measurement date${actualPoints.length === 1 ? "" : "s"} · latest ${formatDate(actualPoints[actualPoints.length - 1].date)}`
-    : "No actual measurements saved yet. Enter equipment progress below to start the actual curve.";
+    ? `${actualPoints.length} Overall progress snapshot date${actualPoints.length === 1 ? "" : "s"} · latest ${formatDate(actualPoints[actualPoints.length - 1].date)}`
+    : "No Overall progress recorded yet. Enter Daily activities progress to start the actual curve.";
+}
+
+function renderDashboardMetrics(workPackage, schedule, plannedPoints, actualPoints) {
+  const today = localDateString();
+  const dateLabel = formatDate(today);
+  document.getElementById("dashboard-status-date").textContent = `AS OF ${dateLabel}`;
+  document.getElementById("dashboard-selected-title").textContent =
+    workPackage ? `${workPackage} · package indicators` : "Select a package to view its schedule";
+  document.getElementById("dashboard-selected-date").textContent = workPackage ? dateLabel : "";
+  document.getElementById("dashboard-chart-date").textContent = workPackage
+    ? `${workPackage} · ${dateLabel}`
+    : "Select MS03 Drum or MS04 Tower";
+  const { completedEquipment, durationDays, delayedEquipment } = getPackageIndicators(workPackage, schedule, today);
+  const values = {
+    "dashboard-equipment-total": workPackage ? schedule.length.toLocaleString() : "—",
+    "dashboard-use-days": workPackage && durationDays !== null ? durationDays.toLocaleString() : "—",
+    "dashboard-done-total": workPackage ? `${completedEquipment.toLocaleString()} / ${schedule.length.toLocaleString()}` : "—",
+    "dashboard-delayed-total": workPackage ? delayedEquipment.toLocaleString() : "—"
+  };
+  Object.entries(values).forEach(([id, value]) => {
+    document.getElementById(id).textContent = value;
+  });
+  document.getElementById("dashboard-done-caption").textContent =
+    workPackage ? "Equipment with actual finish date" : "Choose a package to view completion";
+}
+
+function getPackageIndicators(workPackage, schedule, today = localDateString()) {
+  const activityStatuses = getActivityStatuses();
+  const todayTime = new Date(`${today}T00:00:00Z`).getTime();
+  const delayedEquipment = schedule.filter(record => {
+    if (!workPackage || !record.maintenanceStart || !record.maintenanceFinish
+      || new Date(`${record.maintenanceStart}T00:00:00Z`).getTime() > todayTime
+      || !record.timeline.length) return false;
+    const actual = getEquipmentOverallProgress(workPackage, record, activityStatuses);
+    if (actual === null) return false;
+    const start = new Date(`${record.maintenanceStart}T00:00:00Z`).getTime();
+    const finish = new Date(`${record.maintenanceFinish}T00:00:00Z`).getTime();
+    const planned = todayTime >= finish
+      ? 100
+      : Math.max(0, Math.min(100, (todayTime - start) / Math.max(1, finish - start) * 100));
+    return planned - actual > 0.1;
+  }).length;
+  return {
+    completedEquipment: schedule.filter(record => record.actualFinish).length,
+    durationDays: getPackageScheduleDuration(schedule),
+    delayedEquipment
+  };
+}
+
+function getPackageComparison(workPackage, today = localDateString()) {
+  const schedule = getEquipmentRecords(workPackage);
+  const plannedPoints = buildPlannedProgress(schedule);
+  const actualPoints = buildActualProgress(workPackage, schedule);
+  const plannedAsOfToday = plannedPoints.filter(point => point.date <= today);
+  return {
+    workPackage,
+    equipmentCount: schedule.length,
+    planned: plannedAsOfToday.length ? plannedAsOfToday[plannedAsOfToday.length - 1].plannedProgress : plannedPoints.length ? 0 : null,
+    actual: actualPoints.length ? actualPoints[actualPoints.length - 1].actualProgress : null,
+    durationDays: getPackageScheduleDuration(schedule),
+    finish: schedule.reduce((latest, record) =>
+      record.maintenanceFinish && record.maintenanceFinish > latest ? record.maintenanceFinish : latest, "")
+  };
+}
+
+function renderPackageComparisonCards(selectedWorkPackage) {
+  const today = localDateString();
+  document.getElementById("dashboard-status-date").textContent = `AS OF ${formatDate(today)}`;
+  [
+    { workPackage: "MS03 Drum", prefix: "dashboard-ms03" },
+    { workPackage: "MS04 Tower", prefix: "dashboard-ms04" }
+  ].forEach(({ workPackage, prefix }) => {
+    const { equipmentCount, planned, actual, durationDays, finish } = getPackageComparison(workPackage, today);
+    const setText = (suffix, value) => {
+      document.getElementById(`${prefix}-${suffix}`).textContent = value;
+    };
+    const setBar = (suffix, value) => {
+      document.getElementById(`${prefix}-${suffix}-bar`).style.width =
+        `${Math.max(0, Math.min(100, value ?? 0))}%`;
+    };
+    setText("equipment", equipmentCount.toLocaleString());
+    setText("plan", planned === null ? "—" : `${planned.toFixed(1)}%`);
+    setText("actual", actual === null ? "—" : `${actual.toFixed(1)}%`);
+    setText("days", durationDays === null ? "—" : durationDays.toLocaleString());
+    setText("finish", finish ? formatDate(finish) : "—");
+    setBar("plan", planned);
+    setBar("actual", actual);
+  });
+  document.querySelectorAll("[data-dashboard-package]").forEach(button => {
+    const selected = button.dataset.dashboardPackage === selectedWorkPackage;
+    button.classList.toggle("is-selected", selected);
+    button.setAttribute("aria-pressed", String(selected));
+  });
+}
+
+function getPackageScheduleDuration(schedule) {
+  const datedRecords = schedule.filter(record =>
+    /^\d{4}-\d{2}-\d{2}$/.test(record.maintenanceStart || "")
+    && /^\d{4}-\d{2}-\d{2}$/.test(record.maintenanceFinish || "")
+    && record.maintenanceFinish >= record.maintenanceStart);
+  if (!datedRecords.length) return null;
+  const start = datedRecords.reduce((earliest, record) =>
+    record.maintenanceStart < earliest ? record.maintenanceStart : earliest,
+  datedRecords[0].maintenanceStart);
+  const finish = datedRecords.reduce((latest, record) =>
+    record.maintenanceFinish > latest ? record.maintenanceFinish : latest,
+  datedRecords[0].maintenanceFinish);
+  const duration = (Date.parse(`${finish}T00:00:00Z`) - Date.parse(`${start}T00:00:00Z`)) / 86400000;
+  return Number.isFinite(duration) && duration >= 0 ? Math.floor(duration) + 1 : null;
 }
 
 function equipmentWeight(record) {
@@ -910,42 +1074,73 @@ function buildPlannedProgress(schedule) {
 }
 
 function buildActualProgress(workPackage, schedule) {
-  const equipment = schedule.map(record => ({ tag: String(record.equipmentTag), weight: equipmentWeight(record) }));
+  const equipment = schedule.map(record => ({ record, tag: String(record.equipmentTag), weight: equipmentWeight(record) }));
   const totalWeight = equipment.reduce((sum, record) => sum + record.weight, 0);
-  const saved = getEquipmentActuals()
-    .filter(item => normalizeWorkPackage(item.workPackage) === workPackage)
+  const pointsByDate = new Map();
+  const savedSnapshots = getEquipmentActuals()
+    .filter(item => item.source === "overall-progress"
+      && normalizeWorkPackage(item.workPackage) === workPackage
+      && /^\d{4}-\d{2}-\d{2}$/.test(item.date))
     .sort((a, b) => a.date.localeCompare(b.date) || String(a.savedAt).localeCompare(String(b.savedAt)));
-  const readingsByDate = new Map();
-  for (const item of saved) {
-    const readings = readingsByDate.get(item.date) || new Map();
-    Object.entries(item.progress || {}).forEach(([tag, value]) => {
-      if (item.plant) readings.set(`${item.plant}::${tag}`, value);
-      else readings.set(tag, value);
-    });
-    readingsByDate.set(item.date, readings);
+  const progressFor = progress => {
+    const completedWeight = equipment.reduce((sum, item) => {
+      const value = Number(progress?.[item.tag]);
+      return sum + item.weight * (Number.isFinite(value) ? Math.max(0, Math.min(100, value)) : 0) / 100;
+    }, 0);
+    return totalWeight ? completedWeight / totalWeight * 100 : 0;
+  };
+  savedSnapshots.forEach(item => pointsByDate.set(item.date, {
+    date: item.date,
+    actualProgress: progressFor(item.progress)
+  }));
+
+  const activityStatuses = getActivityStatuses();
+  const currentProgress = Object.fromEntries(equipment.flatMap(({ record, tag }) => {
+    const hasRecordedActivity = record.timeline.some((item, index) =>
+      Object.prototype.hasOwnProperty.call(
+        activityStatuses,
+        getActivityStatusKey(workPackage, tag, index, item)
+      ));
+    if (!hasRecordedActivity) return [];
+    const progress = getEquipmentOverallProgress(workPackage, record, activityStatuses);
+    return progress === null ? [] : [[tag, progress]];
+  }));
+  if (Object.keys(currentProgress).length) {
+    const date = localDateString();
+    pointsByDate.set(date, { date, actualProgress: progressFor(currentProgress) });
   }
-  const latestProgress = new Map();
-  const points = [];
-  for (const [date, readings] of [...readingsByDate.entries()].sort(([a], [b]) => a.localeCompare(b))) {
-    readings.forEach((value, tag) => latestProgress.set(tag, value));
-    const equipmentProgress = new Map();
-    latestProgress.forEach((value, key) => {
-      const tag = key.includes("::") ? key.slice(key.indexOf("::") + 2) : key;
-      equipmentProgress.set(tag, Math.max(equipmentProgress.get(tag) || 0, Number(value) || 0));
-    });
-    const completedWeight = equipment.reduce((sum, item) => sum + item.weight * (Number(equipmentProgress.get(item.tag)) || 0) / 100, 0);
-    points.push({ date, actualProgress: totalWeight ? completedWeight / totalWeight * 100 : 0 });
-  }
-  return points;
+  return [...pointsByDate.values()].sort((a, b) => a.date.localeCompare(b.date));
+}
+
+function saveOverallProgressSnapshot(workPackage, schedule) {
+  const activityStatuses = getActivityStatuses();
+  const progress = Object.fromEntries(schedule.flatMap(record => {
+    const value = getEquipmentOverallProgress(workPackage, record, activityStatuses);
+    return value === null ? [] : [[String(record.equipmentTag), value]];
+  }));
+  if (!Object.keys(progress).length) return true;
+
+  const date = localDateString();
+  const id = `overall-progress:${encodeURIComponent(workPackage)}:${date}`;
+  const actuals = getEquipmentActuals();
+  const snapshot = { id, workPackage, date, progress, source: "overall-progress", savedAt: new Date().toISOString() };
+  const existingIndex = actuals.findIndex(item => item.id === id);
+  if (existingIndex >= 0) actuals[existingIndex] = snapshot;
+  else actuals.push(snapshot);
+  return storeEquipmentActuals(actuals);
+}
+
+function getActivityStatusKey(workPackage, equipmentTag, index, item) {
+  return encodeURIComponent(JSON.stringify([
+    workPackage, equipmentTag, index, item.date, item.start || "",
+    item.finish || "", item.activity
+  ]));
 }
 
 function getEquipmentOverallProgress(workPackage, record, activityStatuses = getActivityStatuses()) {
   if (!record.timeline.length) return null;
   const total = record.timeline.reduce((sum, item, sourceIndex) => {
-    const activityKey = encodeURIComponent(JSON.stringify([
-      workPackage, record.equipmentTag, sourceIndex, item.date, item.start || "",
-      item.finish || "", item.activity
-    ]));
+    const activityKey = getActivityStatusKey(workPackage, record.equipmentTag, sourceIndex, item);
     return sum + (activityStatuses[activityKey]?.progress ?? 0);
   }, 0);
   return total / record.timeline.length;
@@ -958,84 +1153,26 @@ function getEquipmentProgressClass(progress) {
   return "progress-ongoing";
 }
 
-function renderDelayedEquipmentPanel(workPackage) {
-  const panel = document.getElementById("delayed-equipment-panel");
-  if (!panel) return;
-  if (!workPackage) {
-    panel.innerHTML = '<p class="empty-note">Select a Work Package to check equipment delays.</p>';
-    return;
-  }
-
-  const today = localDateString();
-  const todayTime = new Date(`${today}T00:00:00Z`).getTime();
-  const records = getEquipmentRecords(workPackage).filter(record =>
-    record.maintenanceStart && record.maintenanceFinish
-    && new Date(`${record.maintenanceStart}T00:00:00Z`).getTime() <= todayTime);
-  const actualProgress = new Map();
-  if (records.some(record => record.timeline.length)) {
-    const activityStatuses = getActivityStatuses();
-    records.forEach(record => {
-      const progress = getEquipmentOverallProgress(workPackage, record, activityStatuses);
-      if (progress !== null) actualProgress.set(String(record.equipmentTag), progress);
-    });
-  } else {
-    getEquipmentActuals()
-      .filter(item => normalizeWorkPackage(item.workPackage) === workPackage && item.date <= today)
-      .sort((a, b) => a.date.localeCompare(b.date) || String(a.savedAt).localeCompare(String(b.savedAt)))
-      .forEach(item => Object.entries(item.progress || {}).forEach(([tag, value]) => {
-        const progress = Number(value);
-        if (Number.isFinite(progress) && progress >= 0 && progress <= 100) {
-          actualProgress.set(String(tag), progress);
-        }
-      }));
-  }
-
-  const startedWithoutActuals = records.filter(record =>
-    !actualProgress.has(String(record.equipmentTag))).length;
-  const delayed = records.flatMap(record => {
-    const tag = String(record.equipmentTag);
-    if (!actualProgress.has(tag)) return [];
-    const start = new Date(`${record.maintenanceStart}T00:00:00Z`).getTime();
-    const finish = new Date(`${record.maintenanceFinish}T00:00:00Z`).getTime();
-    if (!Number.isFinite(start) || !Number.isFinite(finish)) return [];
-    const planned = todayTime >= finish
-      ? 100
-      : Math.max(0, Math.min(100, (todayTime - start) / Math.max(1, finish - start) * 100));
-    const actual = actualProgress.get(tag);
-    const behind = planned - actual;
-    return behind > 0.1 ? [{ record, planned, actual, behind, finish }] : [];
-  }).sort((a, b) => b.behind - a.behind || a.finish - b.finish);
-
-  if (!delayed.length) {
-    panel.innerHTML = `<p class="empty-note">No confirmed delays as of ${escapeHtml(formatDate(today))}.${startedWithoutActuals
-      ? ` ${startedWithoutActuals} scheduled equipment item${startedWithoutActuals === 1 ? " has" : "s have"} no actual progress recorded yet.`
-      : ""}</p>`;
-    return;
-  }
-
-  panel.innerHTML = `<p class="delay-summary">${delayed.length} equipment item${delayed.length === 1 ? "" : "s"} behind plan · as of ${escapeHtml(formatDate(today))}${startedWithoutActuals
-    ? ` · ${startedWithoutActuals} without actual progress`
-    : ""}</p>
-    <div class="schedule-table-wrap"><table class="delay-table"><thead><tr>
-      <th>Equipment</th><th>Area / unit</th><th>Plan finish</th><th>Planned</th><th>Actual</th><th>Behind</th>
-    </tr></thead><tbody>${delayed.map(({ record, planned, actual, behind, finish }) => {
-      const overdueDays = Math.floor((todayTime - finish) / 86400000);
-      return `<tr><td><strong>${escapeHtml(record.equipmentTag)}</strong></td>
-        <td>${escapeHtml(record.area || record.unit || record.section || "—")}</td>
-        <td>${escapeHtml(formatDate(record.maintenanceFinish))}${overdueDays > 0 ? `<small class="delay-overdue">${overdueDays} days overdue</small>` : ""}</td>
-        <td>${planned.toFixed(1)}%</td><td>${actual.toFixed(1)}%</td>
-        <td><strong class="delay-variance">${behind.toFixed(1)} pp</strong></td></tr>`;
-    }).join("")}</tbody></table></div>`;
-}
-
 function renderMasterSchedule() {
   const workPackage = normalizeWorkPackage(document.getElementById("overview-work-package").value);
   const search = document.getElementById("master-schedule-search").value.trim().toLowerCase();
   const equipmentTable = document.getElementById("equipment-schedule-table");
+  const addEquipmentButton = document.getElementById("add-equipment-button");
   const title = document.getElementById("equipment-schedule-title");
   const caption = document.getElementById("equipment-schedule-caption");
   const records = getEquipmentRecords(workPackage);
+  const hiddenRecords = workPackage
+    ? getEquipmentRecords(workPackage, true).filter(record => record.hidden)
+    : [];
+  const hiddenPanel = document.getElementById("hidden-equipment-panel");
+  hiddenPanel.hidden = !hiddenRecords.length;
+  document.getElementById("hidden-equipment-count").textContent = hiddenRecords.length;
+  document.getElementById("hidden-equipment-list").innerHTML = hiddenRecords.map(record =>
+    `<li><strong>${escapeHtml(record.equipmentTag)}</strong>
+      <button class="button button-outline button-small" type="button" data-restore-equipment="${escapeHtml(record.equipmentTag)}">Restore</button></li>`
+  ).join("");
   const activityStatuses = getActivityStatuses();
+  addEquipmentButton.disabled = !workPackage;
   const expandedActivityTags = equipmentTable.dataset.workPackage === workPackage
     ? new Set([...equipmentTable.querySelectorAll(".equipment-activities[open]")]
       .map(details => details.dataset.equipmentTag))
@@ -1057,7 +1194,7 @@ function renderMasterSchedule() {
       equipmentTable.innerHTML = '<p class="empty-note">No equipment or activity matches that search.</p>';
     } else {
       equipmentTable.innerHTML = `<table class="master-equipment-table">
-        <thead><tr><th>No.</th><th>Equipment tag</th><th>Area / unit</th><th>Package / section</th><th>MNT start plan</th><th>MNT finish plan</th><th>Actual start</th><th>Actual finish</th><th>Overall progress</th><th>Daily activities</th></tr></thead>
+        <thead><tr><th>No.</th><th>Equipment tag</th><th>Area / unit</th><th>Package / section</th><th>MNT start plan</th><th>MNT finish plan</th><th>Actual start</th><th>Actual finish</th><th>Overall progress</th><th>Daily activities</th><th>Actions</th></tr></thead>
         <tbody>${filtered.map(record => {
           const sequence = records.indexOf(record) + 1;
           const areaUnit = [record.area, record.unit || record.section].filter(Boolean).join(" · ");
@@ -1069,31 +1206,25 @@ function renderMasterSchedule() {
               || String(a.item.start || "").localeCompare(String(b.item.start || ""))
               || a.sourceIndex - b.sourceIndex)
             .map(({ item, sourceIndex }) => {
-              const activityKey = encodeURIComponent(JSON.stringify([
-                workPackage, record.equipmentTag, sourceIndex, item.date, item.start || "",
-                item.finish || "", item.activity
-              ]));
+              const activityKey = getActivityStatusKey(workPackage, record.equipmentTag, sourceIndex, item);
               const activityProgress = activityStatuses[activityKey] || { progress: 0, status: "not-started" };
               const { progress, status } = activityProgress;
               const rowStatus = record.timeline.length ? status : "";
               const activityLabel = getEquipmentActivityLabel(item.activity);
               const statusControl = record.timeline.length
                 ? `<td><span class="activity-status-label activity-status-${escapeHtml(status)}" data-activity-status-label>${escapeHtml(status === "not-started" ? "Not started" : status === "done" ? "Done" : "Ongoing")}</span></td>
-                   <td><input class="activity-progress-input" type="number" min="0" max="100" step="1" value="${progress}" data-activity-progress="${escapeHtml(activityKey)}" data-saved-progress="${progress}" aria-label="Progress percentage for ${escapeHtml(activityLabel)} on ${escapeHtml(item.date)}"><span class="activity-progress-unit">%</span></td>`
+                   <td><input class="activity-progress-input" type="number" min="0" max="100" step="1" value="${progress}" data-activity-progress="${escapeHtml(activityKey)}" data-saved-progress="${progress}" aria-label="Progress percentage for ${escapeHtml(activityLabel)} on ${escapeHtml(item.date)}"><span class="activity-progress-unit">%</span></td>
+                   <td><button class="button button-outline button-small activity-edit-button" type="button" data-edit-scheduled-activity="${sourceIndex}">Edit</button></td>`
                 : "";
               return `<tr class="${rowStatus ? `activity-status-row-${escapeHtml(rowStatus)}` : ""}">
                 <td>${escapeHtml(formatDate(item.date))}</td>
                 <td>${escapeHtml(item.start || "—")}–${escapeHtml(item.finish || "—")}</td>
                 <td>${escapeHtml(activityLabel)}</td>${statusControl}</tr>`;
             }).join("");
-          const activityHeaders = record.timeline.length
-            ? "<th>Date</th><th>Time</th><th>Scheduled activity</th><th>Status</th><th>Progress (%)</th>"
-            : "<th>Date</th><th>Time</th><th>Scheduled activity</th>";
-          const emptyActivity = record.timeline.length
-            ? '<tr><td colspan="5">No daily activities listed.</td></tr>'
-            : '<tr><td colspan="3">No daily activities listed.</td></tr>';
+          const activityHeaders = "<th>Date</th><th>Time</th><th>Scheduled activity</th><th>Status</th><th>Progress (%)</th><th>Actions</th>";
+          const emptyActivity = '<tr data-empty-activity><td colspan="6">No daily activities listed.</td></tr>';
           return `<tr>
-            <td>${sequence}</td><td><strong>${escapeHtml(record.equipmentTag)}</strong></td>
+            <td>${sequence}</td><td><strong class="equipment-tag ${getEquipmentProgressClass(overallProgress)}">${escapeHtml(record.equipmentTag)}</strong></td>
             <td>${escapeHtml(areaUnit || "—")}</td><td>${escapeHtml(packageSection)}</td>
             <td>${escapeHtml(record.maintenanceStart ? formatDate(record.maintenanceStart) : "—")}</td>
             <td>${escapeHtml(record.maintenanceFinish ? formatDate(record.maintenanceFinish) : "—")}</td>
@@ -1101,14 +1232,18 @@ function renderMasterSchedule() {
             <td><input type="date" data-equipment-actual-date="actualFinish" data-equipment-tag="${escapeHtml(record.equipmentTag)}" data-saved-value="${escapeHtml(record.actualFinish || "")}" aria-label="Actual finish for ${escapeHtml(record.equipmentTag)}" value="${escapeHtml(record.actualFinish || "")}"></td>
             <td><strong class="equipment-overall-progress ${getEquipmentProgressClass(overallProgress)}" data-equipment-overall-progress>${overallProgress === null ? "—" : `${overallProgress.toFixed(1)}%`}</strong></td>
             <td><details class="equipment-activities" data-equipment-tag="${escapeHtml(record.equipmentTag)}"${expandedActivityTags.has(String(record.equipmentTag)) ? " open" : ""}><summary>${record.timeline.length} ${record.timeline.length === 1 ? "activity" : "activities"}</summary>
+              <button class="button button-outline button-small add-scheduled-activity" type="button" data-add-scheduled-activity>Add activity</button>
               <div class="equipment-activities-list"><table><thead><tr>${activityHeaders}</tr></thead><tbody>${activityRows || emptyActivity}</tbody></table></div>
             </details></td>
+            <td class="scheduled-equipment-actions"><button class="button button-outline button-small" type="button" data-edit-scheduled-equipment="${escapeHtml(record.equipmentTag)}">Edit</button>
+              <button class="button button-outline button-small" type="button" data-hide-scheduled-equipment="${escapeHtml(record.equipmentTag)}">Delete</button></td>
           </tr>`;
         }).join("")}</tbody>
       </table>`;
     }
   }
   equipmentTable.dataset.workPackage = workPackage;
+  document.getElementById("equipment-editor").hidden = true;
 
   const planTable = document.getElementById("master-plan-table");
   const planRows = masterSchedule.masterPlan.map(item => {
@@ -1124,6 +1259,263 @@ function renderMasterSchedule() {
       <td>${escapeHtml(assignments || "—")}</td></tr>`;
   }).join("");
   planTable.innerHTML = `<table class="master-plan-table"><thead><tr><th>Option</th><th>Master activity</th><th>Contractor</th><th>Quantities / execution</th><th>Weekly plan</th></tr></thead><tbody>${planRows}</tbody></table>`;
+}
+
+function openEquipmentEditor(tag = "") {
+  const workPackage = normalizeWorkPackage(document.getElementById("overview-work-package").value);
+  if (!workPackage) {
+    showToast("Select a Work Package before adding or editing equipment.");
+    return;
+  }
+  const form = document.getElementById("equipment-editor");
+  const record = tag
+    ? getEquipmentRecords(workPackage).find(item => String(item.equipmentTag) === tag)
+    : null;
+  if (tag && !record) {
+    showToast(`Equipment ${tag} is not available in the selected Work Package.`);
+    return;
+  }
+  form.reset();
+  form.elements.equipmentTag.value = record?.equipmentTag || "";
+  form.elements.equipmentTag.readOnly = Boolean(record);
+  form.elements.area.value = record?.area || "";
+  form.elements.unit.value = record?.unit || record?.section || "";
+  form.elements.packageNo.value = record?.packageNo || record?.operationPackage || "";
+  form.elements.section.value = record?.packageCode || record?.section || "";
+  form.elements.maintenanceStart.value = record?.maintenanceStart || "";
+  form.elements.maintenanceFinish.value = record?.maintenanceFinish || "";
+  form.elements.actualStart.value = record?.actualStart || "";
+  form.elements.actualFinish.value = record?.actualFinish || "";
+  form.elements.maintenanceUseDays.value = record?.maintenanceUseDays ?? "";
+  form.dataset.originalTag = tag;
+  document.getElementById("equipment-editor-title").textContent = record ? `Edit ${tag}` : "Add equipment";
+  form.hidden = false;
+  form.elements.equipmentTag.focus();
+}
+
+function saveScheduledEquipment(event) {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const workPackage = normalizeWorkPackage(document.getElementById("overview-work-package").value);
+  const originalTag = form.dataset.originalTag || "";
+  const tag = form.elements.equipmentTag.value.trim();
+  const records = getEquipmentRecords(workPackage, true);
+  const duplicate = records.some(record =>
+    String(record.equipmentTag).toLowerCase() === tag.toLowerCase()
+    && String(record.equipmentTag) !== originalTag);
+  if (duplicate) {
+    form.elements.equipmentTag.setCustomValidity("This equipment tag already exists in this Work Package, including hidden equipment. Restore it if needed.");
+    form.elements.equipmentTag.reportValidity();
+    form.elements.equipmentTag.setCustomValidity("");
+    return;
+  }
+  const maintenanceStart = form.elements.maintenanceStart.value;
+  const maintenanceFinish = form.elements.maintenanceFinish.value;
+  const actualStart = form.elements.actualStart.value;
+  const actualFinish = form.elements.actualFinish.value;
+  if (maintenanceStart && maintenanceFinish && maintenanceStart > maintenanceFinish) {
+    showToast("MNT finish plan cannot be before MNT start plan.");
+    form.elements.maintenanceFinish.focus();
+    return;
+  }
+  if (actualStart && actualFinish && actualStart > actualFinish) {
+    showToast("Actual finish cannot be before Actual Start.");
+    form.elements.actualFinish.focus();
+    return;
+  }
+  const useDaysInput = form.elements.maintenanceUseDays;
+  const maintenanceUseDays = useDaysInput.value === "" ? null : Number(useDaysInput.value);
+  if (maintenanceUseDays !== null && (!Number.isFinite(maintenanceUseDays) || maintenanceUseDays < 0)) {
+    useDaysInput.focus();
+    useDaysInput.reportValidity();
+    return;
+  }
+  const savedOverrides = getEquipmentOverrides();
+  const existingOverride = savedOverrides.find(item =>
+    normalizeWorkPackage(item.workPackage) === workPackage
+    && String(item.equipmentTag) === originalTag);
+  const equipment = {
+    ...(existingOverride || {}),
+    workPackage,
+    equipmentTag: tag,
+    area: form.elements.area.value.trim(),
+    unit: form.elements.unit.value.trim(),
+    packageNo: form.elements.packageNo.value.trim(),
+    packageCode: form.elements.section.value.trim(),
+    maintenanceStart,
+    maintenanceFinish,
+    actualStart,
+    actualFinish,
+    maintenanceUseDays
+  };
+  if (!originalTag) {
+    equipment.custom = true;
+    equipment.timeline = [];
+  }
+  const overrides = savedOverrides.filter(item =>
+    normalizeWorkPackage(item.workPackage) !== workPackage
+    || String(item.equipmentTag) !== originalTag);
+  overrides.push(equipment);
+  if (!storeEquipmentOverrides(overrides)) return;
+  form.hidden = true;
+  renderOverview();
+  updateActivityEquipmentOptions();
+  showToast(`Equipment ${tag} saved.`);
+}
+
+function setEquipmentHidden(tag, hidden) {
+  const workPackage = normalizeWorkPackage(document.getElementById("overview-work-package").value);
+  const record = getEquipmentRecords(workPackage, true)
+    .find(item => String(item.equipmentTag) === tag);
+  if (!record || Boolean(record.hidden) === hidden) {
+    showToast("This equipment is no longer available. Refresh the schedule and try again.");
+    return;
+  }
+  if (hidden && !window.confirm(`Remove ${tag} from ${workPackage}? Its activities and progress will be kept and can be restored.`)) return;
+  const overrides = getEquipmentOverrides();
+  const existing = overrides.find(item =>
+    normalizeWorkPackage(item.workPackage) === workPackage && String(item.equipmentTag) === tag);
+  const updated = overrides.filter(item =>
+    normalizeWorkPackage(item.workPackage) !== workPackage || String(item.equipmentTag) !== tag);
+  updated.push({ ...existing, workPackage, equipmentTag: tag, hidden });
+  if (!storeEquipmentOverrides(updated)) return;
+  renderOverview();
+  updateActivityEquipmentOptions();
+  showToast(`Equipment ${tag} ${hidden ? "removed" : "restored"}.`);
+}
+
+function addScheduledActivity(button) {
+  const details = button.closest(".equipment-activities");
+  const tbody = details.querySelector(".equipment-activities-list tbody");
+  const existingEditor = tbody.querySelector("[data-new-activity]");
+  if (existingEditor) {
+    existingEditor.querySelector('[data-activity-field="date"]').focus();
+    return;
+  }
+  const row = document.createElement("tr");
+  row.dataset.newActivity = "true";
+  row.innerHTML = `<td><input type="date" data-activity-field="date" aria-label="Activity date" required></td>
+    <td><div class="activity-time-fields">
+      <input type="text" data-activity-field="start" aria-label="Activity start time" placeholder="7AM">
+      <span>–</span>
+      <input type="text" data-activity-field="finish" aria-label="Activity finish time" placeholder="12PM">
+    </div></td>
+    <td><input type="text" data-activity-field="activity" aria-label="Scheduled activity" placeholder="Activity" required></td>
+    <td>Not started</td><td>0%</td>
+    <td class="activity-row-actions">
+      <button class="button button-primary button-small" type="button" data-activity-action="save">Save</button>
+      <button class="button button-outline button-small" type="button" data-activity-action="cancel-add">Cancel</button>
+    </td>`;
+  const emptyRow = tbody.querySelector("[data-empty-activity]");
+  if (emptyRow) emptyRow.hidden = true;
+  tbody.prepend(row);
+  row.querySelector('[data-activity-field="date"]').focus();
+}
+
+function editScheduledActivity(button) {
+  const row = button.closest("tr");
+  const activityIndex = button.dataset.editScheduledActivity;
+  const details = button.closest(".equipment-activities");
+  const workPackage = normalizeWorkPackage(document.getElementById("overview-work-package").value);
+  const record = getEquipmentRecords(workPackage)
+    .find(item => String(item.equipmentTag) === details.dataset.equipmentTag);
+  const item = record?.timeline[Number(activityIndex)];
+  if (!item) {
+    showToast("This scheduled activity is no longer available. Refresh the schedule and try again.");
+    return;
+  }
+  const statusMarkup = row.querySelector("[data-activity-status-label]").outerHTML;
+  const progressMarkup = row.querySelector("[data-activity-progress]").closest("td").innerHTML;
+  row.dataset.activityIndex = activityIndex;
+  row.innerHTML = `<td><input type="date" data-activity-field="date" aria-label="Activity date" required value="${escapeHtml(item.date)}"></td>
+    <td><div class="activity-time-fields">
+      <input type="text" data-activity-field="start" aria-label="Activity start time" value="${escapeHtml(item.start || "")}">
+      <span>–</span>
+      <input type="text" data-activity-field="finish" aria-label="Activity finish time" value="${escapeHtml(item.finish || "")}">
+    </div></td>
+    <td><input type="text" data-activity-field="activity" aria-label="Scheduled activity" required value="${escapeHtml(getEquipmentActivityLabel(item.activity))}"></td>
+    <td>${statusMarkup}</td><td>${progressMarkup}</td>
+    <td class="activity-row-actions">
+      <button class="button button-primary button-small" type="button" data-activity-action="save">Save</button>
+      <button class="button button-outline button-small" type="button" data-activity-action="cancel">Cancel</button>
+    </td>`;
+  row.querySelector("[data-activity-progress]").disabled = true;
+  row.querySelector('[data-activity-field="activity"]').focus();
+}
+
+function saveScheduledActivity(button) {
+  const row = button.closest("tr");
+  const details = button.closest(".equipment-activities");
+  const workPackage = normalizeWorkPackage(document.getElementById("overview-work-package").value);
+  const equipmentTag = details.dataset.equipmentTag;
+  const isNew = row.hasAttribute("data-new-activity");
+  const activityIndex = isNew ? null : Number(row.dataset.activityIndex);
+  const records = getEquipmentRecords(workPackage);
+  const record = records.find(item => String(item.equipmentTag) === equipmentTag);
+  const originalActivity = isNew ? null : record?.timeline[activityIndex];
+  if (!record || (!isNew && !originalActivity)) {
+    showToast("This scheduled activity is no longer available. Refresh the schedule and try again.");
+    return;
+  }
+  const value = field => row.querySelector(`[data-activity-field="${field}"]`).value.trim();
+  const dateInput = row.querySelector('[data-activity-field="date"]');
+  const activityInput = row.querySelector('[data-activity-field="activity"]');
+  const date = dateInput.value;
+  const enteredActivity = value("activity");
+  const activity = originalActivity && enteredActivity === getEquipmentActivityLabel(originalActivity.activity)
+    ? originalActivity.activity
+    : enteredActivity;
+  if (!date) {
+    dateInput.focus();
+    dateInput.reportValidity();
+    return;
+  }
+  if (!activity) {
+    activityInput.focus();
+    activityInput.setCustomValidity("Enter an activity.");
+    activityInput.reportValidity();
+    activityInput.setCustomValidity("");
+    return;
+  }
+
+  const updatedActivity = { ...(originalActivity || {}), date, start: value("start"), finish: value("finish"), activity };
+  const timeline = isNew
+    ? [...record.timeline, updatedActivity]
+    : record.timeline.map((item, index) => index === activityIndex ? updatedActivity : item);
+  const savedOverrides = getEquipmentOverrides();
+  const existingOverride = savedOverrides.find(item =>
+    normalizeWorkPackage(item.workPackage) === workPackage
+    && String(item.equipmentTag) === equipmentTag);
+  const updatedOverride = { ...(existingOverride || record), workPackage, equipmentTag, timeline };
+  const overrides = savedOverrides.filter(item =>
+    normalizeWorkPackage(item.workPackage) !== workPackage
+    || String(item.equipmentTag) !== equipmentTag);
+  overrides.push(updatedOverride);
+  if (!storeEquipmentOverrides(overrides)) return;
+
+  const statuses = getActivityStatuses();
+  if (!isNew) {
+    const oldKey = getActivityStatusKey(workPackage, equipmentTag, activityIndex, originalActivity);
+    const newKey = getActivityStatusKey(workPackage, equipmentTag, activityIndex, updatedActivity);
+    if (oldKey !== newKey && statuses[oldKey]) {
+      statuses[newKey] = statuses[oldKey];
+      delete statuses[oldKey];
+      if (!storeActivityStatuses(statuses)) {
+        storeEquipmentOverrides(savedOverrides);
+        return;
+      }
+    }
+  }
+  const updatedRecords = getEquipmentRecords(workPackage);
+  const hasRecordedProgress = updatedRecords.some(equipment => equipment.timeline.some((item, index) =>
+    Object.prototype.hasOwnProperty.call(statuses,
+      getActivityStatusKey(workPackage, equipment.equipmentTag, index, item))));
+  if (hasRecordedProgress && !saveOverallProgressSnapshot(workPackage, updatedRecords)) {
+    showToast("Activity saved, but its overall progress snapshot could not be saved.");
+  } else {
+    showToast(`Activity ${isNew ? "added" : "saved"} for ${equipmentTag}.`);
+  }
+  renderOverview();
 }
 
 function saveActivityStatus(event) {
@@ -1163,11 +1555,16 @@ function saveActivityStatus(event) {
       sum + (Number(activityInput.value) || 0), 0);
     const progress = total / activityInputs.length;
     overallProgress.textContent = `${progress.toFixed(1)}%`;
-    overallProgress.className = `equipment-overall-progress ${getEquipmentProgressClass(progress)}`;
+    const progressClass = getEquipmentProgressClass(progress);
+    overallProgress.className = `equipment-overall-progress ${progressClass}`;
+    equipmentRow.querySelector(".equipment-tag").className = `equipment-tag ${progressClass}`;
   }
-  renderDelayedEquipmentPanel(normalizeWorkPackage(
-    document.getElementById("overview-work-package").value
-  ));
+  const workPackage = normalizeWorkPackage(document.getElementById("overview-work-package").value);
+  const schedule = getEquipmentRecords(workPackage);
+  if (!saveOverallProgressSnapshot(workPackage, schedule)) {
+    showToast("Overall progress was saved, but its S-curve snapshot could not be saved.");
+  }
+  renderOverview();
 }
 
 function saveEquipmentActualDate(input) {
@@ -1304,10 +1701,13 @@ function saveEquipmentDetails(tag) {
   }
   const actualProgressInputs = new Map([...document.querySelectorAll("#actual-entry-table [data-actual-tag]")]
     .map(input => [input.dataset.actualTag, input.value]));
-  const overrides = getEquipmentOverrides().filter(item =>
+  const savedOverrides = getEquipmentOverrides();
+  const existingOverride = savedOverrides.find(item =>
+    normalizeWorkPackage(item.workPackage) === workPackage && String(item.equipmentTag) === tag);
+  const overrides = savedOverrides.filter(item =>
     normalizeWorkPackage(item.workPackage) !== workPackage || String(item.equipmentTag) !== tag
   );
-  overrides.push(change);
+  overrides.push({ ...existingOverride, ...change });
   if (storeEquipmentOverrides(overrides)) {
     editingEquipmentTags.delete(tag);
     renderOverview();
@@ -1430,7 +1830,6 @@ function buildCurveSvg(plannedPoints, actualPoints, today = localDateString()) {
   const markers = actualPoints.map(point =>
     `<circle cx="${x(point.date)}" cy="${y(point.actualProgress)}" r="3.5" class="chart-dot-actual"><title>${escapeHtml(formatDate(point.date))} · Actual ${point.actualProgress.toFixed(1)}%</title></circle>`
   ).join("");
-
   const todayX = x(today);
   const todayLabel = formatDate(today).split("/").slice(0, 2).join("-");
   const todayAnchor = todayX < left + 42 ? "start" : todayX > width - right - 42 ? "end" : "middle";
@@ -1441,7 +1840,7 @@ function buildCurveSvg(plannedPoints, actualPoints, today = localDateString()) {
   const actualLine = actualPoints.length > 1 ? `<path d="${actual}" class="chart-line chart-line-actual"/>` : "";
   const actualNotice = actualPoints.length
     ? ""
-    : `<text x="${width / 2}" y="${top + 16}" text-anchor="middle" class="chart-axis-label">Enter actual equipment progress to display the actual curve</text>`;
+    : `<text x="${width / 2}" y="${top + 16}" text-anchor="middle" class="chart-axis-label">Enter Daily activities progress to display the actual curve</text>`;
 
   return `<svg class="curve-chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="Planned and actual cumulative progress over time">
     ${grid}
@@ -1523,17 +1922,13 @@ function exportCsv() {
     ["Equipment", "Planned Start", "Actual Start", "Plan Finish", "Actual Finish"],
     ...report.overallActivities.map(item => [item.equipment, formatDate(item.plannedOpen), formatDate(item.actualOpen), formatDate(item.planClose), formatDate(item.actualClose)]),
     [],
-    ["WORK COMPLETED THIS SHIFT"],
-    ["Equipment", "Section", "Activity", "Due date", "Status", "Remarks"],
-    ...report.todayActivities.map(item => [item.equipment, item.section, item.activity, formatDate(item.dueDate), item.status, item.remarks]),
-    [],
-    ["NEXT SHIFT PLAN"],
-    ["Equipment", "Section", "Activity", "Due date", "Status", "Remarks"],
-    ...report.tomorrowActivities.map(item => [item.equipment, item.section, item.activity, formatDate(item.dueDate), item.status, item.remarks]),
+    ["ACTIVITY DESCRIPTION"],
+    ["Equipment", "Section", "Work Done Today", "Work to be Tomorrow", "Remark"],
+    ...report.workActivities.map(item => [item.equipment, item.section, item.todayActivity, item.tomorrowActivity, item.remark]),
     [],
     ["OPEN ISSUES AND ACTIONS"],
-    ["No.", "Issue", "Countermeasure", "Action by", "Due date"],
-    ...report.issues.map((item, index) => [index + 1, item.issue, item.countermeasure, item.actionBy, formatDate(item.dueDate)]),
+    ["No.", "Issue", "Countermeasure", "Action by", "Due date", "Status", "Remark"],
+    ...report.issues.map((item, index) => [index + 1, item.issue, item.countermeasure, item.actionBy, formatDate(item.dueDate), item.status, item.remark]),
     ...(report.packages.length ? [
       [],
       ["ACTIVITY-LEVEL PROGRESS"],
@@ -1561,6 +1956,35 @@ function downloadBlob(blob, filename) {
   window.setTimeout(() => URL.revokeObjectURL(url), 60000);
 }
 
+function getExportPackageProgress(workPackage) {
+  const date = localDateString();
+  const packages = ["MS03 Drum", "MS04 Tower"].map(item => {
+    const data = getPackageComparison(item, date);
+    return {
+      workPackage: item,
+      equipment: `${data.equipmentCount.toLocaleString()} equipment`,
+      plan: data.planned === null ? "—" : `${data.planned.toFixed(1)}%`,
+      actual: data.actual === null ? "—" : `${data.actual.toFixed(1)}%`,
+      planValue: data.planned,
+      actualValue: data.actual,
+      duration: data.durationDays === null ? "—" : `${data.durationDays.toLocaleString()} days`,
+      finish: data.finish ? formatDate(data.finish) : "—"
+    };
+  });
+  const schedule = workPackage ? getEquipmentRecords(workPackage) : [];
+  const indicators = getPackageIndicators(workPackage, schedule, date);
+  return {
+    date,
+    packages,
+    indicators: [
+      ["Equipment in scope", workPackage ? schedule.length.toLocaleString() : "—"],
+      ["Schedule duration", workPackage && indicators.durationDays !== null ? `${indicators.durationDays.toLocaleString()} days` : "—"],
+      ["Equipment complete", workPackage ? `${indicators.completedEquipment.toLocaleString()} / ${schedule.length.toLocaleString()}` : "—"],
+      ["Equipment behind plan", workPackage ? indicators.delayedEquipment.toLocaleString() : "—"]
+    ]
+  };
+}
+
 async function createReportImage(report) {
   const width = 1200;
   const padding = 64;
@@ -1586,6 +2010,7 @@ async function createReportImage(report) {
     context.fillRect(0, 0, canvas.width, canvas.height);
     context.drawImage(snapshot, 0, 0);
     context.scale(scale, scale);
+    context.textBaseline = "top";
   };
 
   const logo = new Image();
@@ -1730,8 +2155,105 @@ async function createReportImage(report) {
   const schedule = workPackage ? getEquipmentRecords(workPackage) : [];
   const plannedPoints = workPackage ? buildPlannedProgress(schedule) : [];
   const actualPoints = workPackage ? buildActualProgress(workPackage, schedule) : [];
+  const packageProgress = getExportPackageProgress(workPackage);
+  ensureCanvasHeight(y + 450);
+  context.fillStyle = "#123650";
+  context.fillRect(padding, y, contentWidth, 86);
+  context.fillStyle = "#57d4bd";
+  context.font = "700 11px Arial, sans-serif";
+  context.fillText("DRUM & TOWER TURNAROUND", padding + 20, y + 13);
+  context.fillStyle = "#ffffff";
+  context.font = "700 23px Arial, sans-serif";
+  context.fillText("Package progress", padding + 20, y + 30);
+  context.font = "13px Arial, sans-serif";
+  context.fillText(`Work Package: ${workPackage || "Not specified"}`, padding + 20, y + 62);
+  y += 86;
+  context.fillStyle = "#eff4f7";
+  context.fillRect(padding, y, contentWidth, 29);
+  context.fillStyle = "#526e81";
+  context.font = "700 11px Arial, sans-serif";
+  context.fillText("PACKAGE PERFORMANCE", padding + 16, y + 9);
+  context.textAlign = "right";
+  context.fillText(`AS OF ${formatDate(packageProgress.date)}`, padding + contentWidth - 16, y + 9);
+  context.textAlign = "left";
+  y += 43;
+  const cardGap = 16;
+  const cardWidth = (contentWidth - cardGap) / 2;
+  const cardHeight = 154;
+  packageProgress.packages.forEach((item, index) => {
+    const x = padding + index * (cardWidth + cardGap);
+    const color = index === 0 ? "#df7929" : "#128b8e";
+    context.fillStyle = "#f5f8fa";
+    context.fillRect(x, y, cardWidth, cardHeight);
+    if (item.workPackage === workPackage) {
+      context.strokeStyle = color;
+      context.lineWidth = 1;
+      context.strokeRect(x + 0.5, y + 0.5, cardWidth - 1, cardHeight - 1);
+    }
+    context.fillStyle = color;
+    context.fillRect(x, y, 5, cardHeight);
+    context.fillRect(x + 16, y + 14, 54, 28);
+    context.fillStyle = "#ffffff";
+    context.font = "700 14px Arial, sans-serif";
+    context.fillText(index ? "MS04" : "MS03", x + 21, y + 21);
+    context.fillStyle = "#183e5c";
+    context.font = "700 16px Arial, sans-serif";
+    context.fillText(index ? "Tower package" : "Drum package", x + 80, y + 20);
+    context.textAlign = "right";
+    context.font = "13px Arial, sans-serif";
+    context.fillStyle = "#526779";
+    context.fillText(item.equipment, x + cardWidth - 16, y + 20);
+    context.textAlign = "left";
+    const metricWidth = (cardWidth - 48) / 2;
+    [["Plan to date", item.plan, item.planValue], ["Actual progress", item.actual, item.actualValue]]
+      .forEach(([label, value, progress], metricIndex) => {
+        const metricX = x + 16 + metricIndex * (metricWidth + 16);
+        context.fillStyle = "#708090";
+        context.font = "12px Arial, sans-serif";
+        context.fillText(label, metricX, y + 59);
+        context.fillStyle = color;
+        context.font = "700 19px Arial, sans-serif";
+        context.textAlign = "right";
+        context.fillText(value, metricX + metricWidth, y + 55);
+        context.textAlign = "left";
+        context.fillStyle = "#e3eaf0";
+        context.fillRect(metricX, y + 83, metricWidth, 5);
+        if (progress !== null) {
+          context.fillStyle = color;
+          context.fillRect(metricX, y + 83, metricWidth * Math.max(0, Math.min(100, progress)) / 100, 5);
+        }
+      });
+    context.fillStyle = "#e2e8ed";
+    context.fillRect(x + 16, y + 105, cardWidth - 32, 1);
+    context.fillStyle = "#708090";
+    context.font = "12px Arial, sans-serif";
+    context.fillText(`Schedule duration ${item.duration}`, x + 16, y + 121);
+    context.textAlign = "right";
+    context.fillText(`Plan finish ${item.finish}`, x + cardWidth - 16, y + 121);
+    context.textAlign = "left";
+  });
+  y += cardHeight + 20;
+  context.fillStyle = "#102a43";
+  context.font = "700 16px Arial, sans-serif";
+  context.fillText(`${workPackage || "Work Package not specified"} · package indicators`, padding, y);
+  y += 26;
+  const indicatorWidth = (contentWidth - 3 * cardGap) / 4;
+  packageProgress.indicators.forEach(([label, value], index) => {
+    const x = padding + index * (indicatorWidth + cardGap);
+    context.fillStyle = "#f5f8fa";
+    context.fillRect(x, y, indicatorWidth, 66);
+    context.fillStyle = ["#173c5a", "#df7929", "#1a9a57", "#cf5262"][index];
+    context.fillRect(x, y, indicatorWidth, 3);
+    context.fillStyle = "#526779";
+    context.font = "13px Arial, sans-serif";
+    context.fillText(label, x + 10, y + 11);
+    context.fillStyle = ["#173c5a", "#df7929", "#1a9a57", "#cf5262"][index];
+    context.font = "700 20px Arial, sans-serif";
+    context.fillText(value, x + 10, y + 34);
+  });
+  y += 86;
   if (plannedPoints.length) {
-    drawSectionTitle(`Progress S-curve · ${workPackage}`);
+    drawSectionTitle(`Maintenance progress curve · ${workPackage}`);
     const chartHeight = 220;
     ensureCanvasHeight(y + chartHeight + 35);
     const left = padding + 50;
@@ -1772,6 +2294,31 @@ async function createReportImage(report) {
     };
     drawCurve(plannedPoints, "plannedProgress", "#d29a48", true);
     drawCurve(actualPoints, "actualProgress", "#167d77");
+    actualPoints.forEach(point => {
+      context.fillStyle = "#167d77";
+      context.beginPath();
+      context.arc(pointX(point.date), pointY(point.actualProgress), 4, 0, Math.PI * 2);
+      context.fill();
+    });
+    const todayX = pointX(packageProgress.date);
+    context.strokeStyle = "#d32f2f";
+    context.lineWidth = 2;
+    context.beginPath();
+    context.moveTo(todayX, top);
+    context.lineTo(todayX, bottom);
+    context.stroke();
+    context.fillStyle = "#d32f2f";
+    context.font = "700 11px Arial, sans-serif";
+    context.textAlign = todayX < left + 40 ? "left" : todayX > right - 40 ? "right" : "center";
+    context.fillText(formatDate(packageProgress.date).split("/").slice(0, 2).join("-"), todayX, top + 3);
+    context.textAlign = "left";
+    if (!actualPoints.length) {
+      context.fillStyle = "#738391";
+      context.font = "12px Arial, sans-serif";
+      context.textAlign = "center";
+      context.fillText("Enter Daily activities progress to display the actual curve", (left + right) / 2, top + 16);
+      context.textAlign = "left";
+    }
     const tickCount = 5;
     context.fillStyle = "#738391";
     context.font = "11px Arial, sans-serif";
@@ -1779,23 +2326,34 @@ async function createReportImage(report) {
       const date = new Date(minDate.getTime() + (maxDate - minDate) * index / tickCount).toISOString().slice(0, 10);
       context.fillText(formatDate(date), pointX(date) - 25, bottom + 12);
     }
-    y = top + chartHeight + 20;
+    y = top + chartHeight + 4;
+    context.font = "12px Arial, sans-serif";
+    [["#d29a48", "Planned"], ["#167d77", "Actual"], ["#d32f2f", "Current date"]].forEach(([color, label], index) => {
+      context.fillStyle = color;
+      context.fillRect(padding + index * 130, y, 18, 3);
+      context.fillStyle = "#526779";
+      context.fillText(label, padding + 24 + index * 130, y - 5);
+    });
+    y += 30;
+  } else {
+    drawSectionTitle("Maintenance progress curve");
+    context.fillStyle = "#738391";
+    context.font = "13px Arial, sans-serif";
+    context.fillText("No maintenance plan data is available for this Work Package.", padding, y);
+    y += 28;
   }
   drawTable("Equipment milestones", report.overallActivities, [
     ["Equipment", "equipment"], ["Planned Start", "plannedOpen"], ["Actual Start", "actualOpen"],
     ["Plan Finish", "planClose"], ["Actual Finish", "actualClose"]
   ], [0.24, 0.19, 0.19, 0.19, 0.19]);
-  drawTable("Work completed this shift", report.todayActivities, [
-    ["Equipment", "equipment"], ["Section", "section"], ["Activity", "activity"],
-    ["Due date", "dueDate"], ["Status", "status"], ["Remarks", "remarks"]
-  ], [0.14, 0.12, 0.27, 0.13, 0.13, 0.21]);
-  drawTable("Next shift plan", report.tomorrowActivities, [
-    ["Equipment", "equipment"], ["Section", "section"], ["Activity", "activity"],
-    ["Due date", "dueDate"], ["Status", "status"], ["Remarks", "remarks"]
-  ], [0.14, 0.12, 0.27, 0.13, 0.13, 0.21]);
+  drawTable("Daily Activity Description", getWorkActivityExportRows(report), [
+    ["Equipment", "equipment"], ["Section", "section"],
+    ["Work Done Today", "today"], ["Work to be Tomorrow", "tomorrow"], ["Remark", "remark"]
+  ], [0.13, 0.09, 0.30, 0.30, 0.18]);
   drawTable("Open issues and actions", report.issues, [
-    ["Issue", "issue"], ["Countermeasure", "countermeasure"], ["Action by", "actionBy"], ["Due date", "dueDate"]
-  ], [0.06, 0.30, 0.32, 0.18, 0.14], true);
+    ["Issue", "issue"], ["Countermeasure", "countermeasure"], ["Action by", "actionBy"],
+    ["Due date", "dueDate"], ["Status", "status"], ["Remark", "remark"]
+  ], [0.05, 0.20, 0.20, 0.13, 0.13, 0.10, 0.19], true);
   drawTable("Activity-level progress", report.packages, [
     ["Work package / activity", "name"], ["Area", "area"], ["Plan", "planned"],
     ["Actual", "actual"], ["Status", "status"]
@@ -1841,7 +2399,7 @@ async function exportReportImage() {
     const image = await createImageBitmap(blob);
     image.close();
     downloadBlob(blob, filename);
-    showToast("JPG downloaded. Choose a save location in your browser's download settings.");
+    showToast("Report image downloaded. Attach the JPG to your Zalo group.");
   } catch (error) {
     if (error.name === "AbortError") return;
     console.error("Could not create or save the report image.", error);
@@ -1858,6 +2416,7 @@ function reportDocument(report) {
     ? `<div class="curve-wrap">${buildCurveSvg(plannedPoints, actualPoints)}</div>
       <div class="curve-legend"><span><i class="legend-planned"></i> Planned</span><span><i class="legend-actual"></i> Actual</span><span><i class="legend-today"></i> Current date</span></div>`
     : '<p class="empty-note">No maintenance plan data is available for this Work Package.</p>';
+  const packageProgress = getExportPackageProgress(workPackage);
   const detail = (label, value) => `<div class="detail"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value || "—")}</strong></div>`;
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Maintenance UPS-MES</title>
     <style>
@@ -1870,6 +2429,36 @@ function reportDocument(report) {
       h2{color:#102a43;font-size:14px;margin:22px 0 10px;padding-bottom:6px;border-bottom:1px solid #dfe7ec}
       .grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}.detail{padding:9px;background:#f5f8fa;border-radius:4px}
       .detail span{display:block;color:#708090;font-size:9px;margin-bottom:5px}.detail strong{font-size:11px;white-space:pre-wrap}
+      .package-dashboard{margin:20px 0;border:1px solid #dfe7ec;border-radius:6px;overflow:hidden}
+      .package-dashboard-header{padding:14px 16px;background:#123650;color:#fff}
+      .package-dashboard-header small{display:block;color:#57d4bd;font-size:8px;font-weight:bold;letter-spacing:1px}
+      .package-dashboard-header h2{color:#fff;border:0;margin:5px 0;font-size:18px;padding:0}
+      .package-dashboard-header p{margin:0;color:#d4e4ed;font-size:9px}
+      .package-strip{display:flex;justify-content:space-between;padding:8px 16px;background:#eff4f7;color:#526e81;font-size:9px}
+      .package-dashboard-body{padding:12px}
+      .package-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
+      .package-card{--accent:#df7929;padding:10px;background:#f8fafb;border:1px solid #dfe7ec;border-left:4px solid var(--accent);border-radius:5px}
+      .package-card.tower{--accent:#128b8e}.package-card.selected{outline:1px solid var(--accent)}
+      .package-card-heading{display:flex;align-items:center;gap:8px;color:#102a43;font-weight:bold}
+      .package-card-heading .badge{padding:6px;background:var(--accent);color:white;border-radius:4px}
+      .package-card-heading .count{margin-left:auto;color:var(--accent);font-size:10px}
+      .package-card-metrics{display:grid;grid-template-columns:repeat(2,1fr);gap:12px;margin:14px 0}
+      .package-metric{display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;color:#708090;font-size:9px}
+      .package-metric strong{color:var(--accent);font-size:16px}.package-track{width:100%;height:4px;background:#e3eaf0;margin-top:6px;border-radius:3px;overflow:hidden}
+      .package-track i{display:block;height:100%;background:var(--accent)}
+      .package-card-footer{display:flex;justify-content:space-between;border-top:1px solid #e2e8ed;padding-top:8px;color:#708090;font-size:9px}
+      .package-card-footer strong{color:#526779}
+      .package-indicator-heading{margin:16px 0 3px;color:#102a43;font-size:12px}
+      .package-indicator-subtitle{margin:0 0 8px;color:#708090;font-size:9px}
+      .package-indicators{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+      .package-indicators .detail{border:1px solid #dfe7ec;border-top:3px solid #173c5a;background:white}
+      .package-indicators .detail:nth-child(2){border-top-color:#df7929}
+      .package-indicators .detail:nth-child(3){border-top-color:#1a9a57}
+      .package-indicators .detail:nth-child(4){border-top-color:#cf5262}
+      .package-indicators strong{font-size:16px;color:#173c5a}
+      .package-indicators .detail:nth-child(2) strong{color:#df7929}
+      .package-indicators .detail:nth-child(3) strong{color:#1a9a57}
+      .package-indicators .detail:nth-child(4) strong{color:#cf5262}
       .curve-wrap{width:100%;margin:0 auto}.curve-chart{display:block;width:100%;height:auto;max-height:300px;overflow:visible}
       .chart-grid-line{stroke:#e9eef2;stroke-width:1}.chart-axis-label{fill:#738391;font:10px Arial,sans-serif}
       .chart-line{fill:none;stroke-width:2.5;stroke-linecap:round;stroke-linejoin:round}
@@ -1879,13 +2468,12 @@ function reportDocument(report) {
       .curve-legend{display:flex;align-items:center;gap:16px;margin:0 12px;color:#607487;font-size:9px}
       .curve-legend span{display:inline-flex;align-items:center;gap:6px}.curve-legend i{width:15px;height:3px;display:inline-block;border-radius:3px}
       .curve-legend .legend-planned{background:repeating-linear-gradient(90deg,#d29a48 0 4px,transparent 4px 7px)}
-      .curve-legend .legend-actual{background:#167d77}
-      .curve-legend .legend-today{width:3px;height:12px;background:#d32f2f}
+      .curve-legend .legend-actual{background:#167d77}.curve-legend .legend-today{width:3px;height:12px;background:#d32f2f}
       table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:8px;border-bottom:1px solid #e4eaf0}td{white-space:pre-wrap;vertical-align:top}
       th{background:#f1f5f7;color:#5a6c7b;font-size:9px;text-transform:uppercase;letter-spacing:.5px}
       .narrative{margin:0 0 11px;white-space:pre-wrap;line-height:1.55}.narrative strong{display:block;color:#43576a;font-size:10px;margin-bottom:4px}
       footer{margin-top:24px;padding-top:8px;border-top:1px solid #dfe7ec;color:#81909b;font-size:9px;display:flex;justify-content:space-between}
-      @media print{body{padding:0}h2{break-after:avoid}.detail,table,tr,.curve-wrap,.curve-legend{break-inside:avoid}}
+      @media print{body{padding:0;-webkit-print-color-adjust:exact;print-color-adjust:exact}h2{break-after:avoid}.detail,.package-card,.package-indicators,table,tr,.curve-wrap,.curve-legend{break-inside:avoid}}
     </style></head><body>
     <header><div class="report-heading"><img class="report-logo" src="${escapeHtml(new URL("company-logo-scg-lsp.png", window.location.href).href)}" alt="SCGC LSP company logo"><div><p class="eyebrow">OPERATIONS CONTROL · TURNAROUND</p><h1>Daily Shift Report</h1>
     <p>${escapeHtml(report.plant || report.site || "Plant not specified")} · ${escapeHtml(report.workPackage || report.unit || "Work package not specified")} · ${escapeHtml(formatDate(report.date))} · ${escapeHtml(report.shift)}</p></div>
@@ -1895,22 +2483,35 @@ function reportDocument(report) {
       ${detail("Prepared by", report.preparedBy)}
       ${detail("Weather / conditions", report.weather)}
     </div>
-    <h2>Progress S-curve · ${escapeHtml(workPackage || "Work Package not specified")}</h2>
+    <section class="package-dashboard">
+    <div class="package-dashboard-header"><small>DRUM &amp; TOWER TURNAROUND</small><h2>Package progress</h2><p>Work Package: ${escapeHtml(workPackage || "Not specified")}</p></div>
+    <div class="package-strip"><span>PACKAGE PERFORMANCE</span><strong>AS OF ${escapeHtml(formatDate(packageProgress.date))}</strong></div>
+    <div class="package-dashboard-body">
+    <div class="package-grid">${packageProgress.packages.map((item, index) =>
+      `<div class="package-card${index ? " tower" : ""}${item.workPackage === workPackage ? " selected" : ""}">
+        <div class="package-card-heading"><span class="badge">${index ? "MS04" : "MS03"}</span><span>${index ? "Tower" : "Drum"} package</span><span class="count">${escapeHtml(item.equipment)}</span></div>
+        <div class="package-card-metrics">${[["Plan to date", item.plan, item.planValue], ["Actual progress", item.actual, item.actualValue]].map(([label, value, progress]) =>
+          `<div class="package-metric"><span>${label}</span><strong>${escapeHtml(value)}</strong><span class="package-track"><i style="width:${progress === null ? 0 : Math.max(0, Math.min(100, progress))}%"></i></span></div>`
+        ).join("")}</div>
+        <div class="package-card-footer"><span>Schedule duration <strong>${escapeHtml(item.duration)}</strong></span><span>Plan finish <strong>${escapeHtml(item.finish)}</strong></span></div></div>`
+    ).join("")}</div>
+    <h3 class="package-indicator-heading">${escapeHtml(workPackage || "Work Package not specified")} · package indicators</h3>
+    <p class="package-indicator-subtitle">Package-specific workload and schedule indicators</p>
+    <div class="package-indicators">${packageProgress.indicators.map(([label, value]) => detail(label, value)).join("")}</div>
+    <h2>Maintenance progress curve · ${escapeHtml(workPackage || "Work Package not specified")}</h2>
     ${progressCurve}
+    </div></section>
     ${printTable("Equipment milestones", report.overallActivities, [
       ["Equipment", "equipment"], ["Planned Start", "plannedOpen"], ["Actual Start", "actualOpen"],
       ["Plan Finish", "planClose"], ["Actual Finish", "actualClose"]
     ])}
-    ${printTable("Work completed this shift", report.todayActivities, [
-      ["Equipment", "equipment"], ["Section", "section"], ["Activity", "activity"],
-      ["Due date", "dueDate"], ["Status", "status"], ["Remarks", "remarks"]
-    ])}
-    ${printTable("Next shift plan", report.tomorrowActivities, [
-      ["Equipment", "equipment"], ["Section", "section"], ["Activity", "activity"],
-      ["Due date", "dueDate"], ["Status", "status"], ["Remarks", "remarks"]
+    ${printTable("Daily Activity Description", getWorkActivityExportRows(report), [
+      ["Equipment", "equipment"], ["Section", "section"],
+      ["Work Done Today", "today"], ["Work to be Tomorrow", "tomorrow"], ["Remark", "remark"]
     ])}
     ${printTable("Open issues and actions", report.issues, [
-      ["Issue", "issue"], ["Countermeasure", "countermeasure"], ["Action by", "actionBy"], ["Due date", "dueDate"]
+      ["Issue", "issue"], ["Countermeasure", "countermeasure"], ["Action by", "actionBy"],
+      ["Due date", "dueDate"], ["Status", "status"], ["Remark", "remark"]
     ], true)}
     ${report.packages.length ? `<h2>Activity-level progress</h2>
     <table><thead><tr><th>Work package / activity</th><th>Area</th><th>Plan</th><th>Actual</th><th>Status</th></tr></thead><tbody>
@@ -1955,7 +2556,8 @@ form.addEventListener("change", updateDashboard);
 form.addEventListener("submit", saveReport);
 document.getElementById("save-report-button").addEventListener("click", saveReport);
 document.getElementById("add-package-button").addEventListener("click", () => addPackage());
-document.getElementById("print-button").addEventListener("click", printReport); document.getElementById("export-image-button").addEventListener("click", exportReportImage);
+document.getElementById("print-button").addEventListener("click", printReport);
+document.getElementById("export-image-button").addEventListener("click", exportReportImage);
 document.getElementById("reset-form-button").addEventListener("click", resetForm);
 document.getElementById("new-report-button").addEventListener("click", resetForm);
 document.getElementById("archive-date").addEventListener("input", renderSavedDateSummary);
@@ -1965,7 +2567,55 @@ document.getElementById("overview-work-package").addEventListener("change", () =
   editingEquipmentTags.clear();
   renderOverview();
 });
+document.querySelectorAll("[data-dashboard-package]").forEach(button => {
+  button.addEventListener("click", () => {
+    const selector = document.getElementById("overview-work-package");
+    selector.value = button.dataset.dashboardPackage;
+    editingEquipmentTags.clear();
+    renderOverview();
+  });
+});
 document.getElementById("master-schedule-search").addEventListener("input", renderMasterSchedule);
+document.getElementById("add-equipment-button").addEventListener("click", () => openEquipmentEditor());
+document.getElementById("equipment-schedule-table").addEventListener("click", event => {
+  const hideEquipmentButton = event.target.closest("[data-hide-scheduled-equipment]");
+  if (hideEquipmentButton) {
+    setEquipmentHidden(hideEquipmentButton.dataset.hideScheduledEquipment, true);
+    return;
+  }
+  const equipmentButton = event.target.closest("[data-edit-scheduled-equipment]");
+  if (equipmentButton) {
+    openEquipmentEditor(equipmentButton.dataset.editScheduledEquipment);
+    return;
+  }
+  const activityButton = event.target.closest("[data-edit-scheduled-activity]");
+  if (activityButton) {
+    editScheduledActivity(activityButton);
+    return;
+  }
+  const addActivityButton = event.target.closest("[data-add-scheduled-activity]");
+  if (addActivityButton) {
+    addScheduledActivity(addActivityButton);
+    return;
+  }
+  const activityAction = event.target.closest("[data-activity-action]");
+  if (activityAction?.dataset.activityAction === "save") saveScheduledActivity(activityAction);
+  else if (activityAction?.dataset.activityAction === "cancel") renderMasterSchedule();
+  else if (activityAction?.dataset.activityAction === "cancel-add") {
+    const row = activityAction.closest("tr");
+    const emptyRow = row.parentElement.querySelector("[data-empty-activity]");
+    row.remove();
+    if (emptyRow) emptyRow.hidden = false;
+  }
+});
+document.getElementById("hidden-equipment-panel").addEventListener("click", event => {
+  const button = event.target.closest("[data-restore-equipment]");
+  if (button) setEquipmentHidden(button.dataset.restoreEquipment, false);
+});
+document.getElementById("equipment-editor").addEventListener("submit", saveScheduledEquipment);
+document.getElementById("cancel-equipment-edit").addEventListener("click", () => {
+  document.getElementById("equipment-editor").hidden = true;
+});
 document.getElementById("equipment-schedule-table").addEventListener("change", saveActivityStatus);
 document.getElementById("actual-entry-date").value = localDateString();
 document.getElementById("actual-entry-date").addEventListener("change", renderActualEntryTable);
@@ -1976,8 +2626,7 @@ document.getElementById("work-package").addEventListener("change", () => {
   updateDashboard();
 });
 document.getElementById("add-overall-activity").addEventListener("click", () => activityRow("overall-activity-rows"));
-document.getElementById("add-today-activity").addEventListener("click", () => narrativeActivityRow("today-activity-rows"));
-document.getElementById("add-tomorrow-activity").addEventListener("click", () => narrativeActivityRow("tomorrow-activity-rows"));
+document.getElementById("add-work-activity").addEventListener("click", () => workActivityRow());
 document.getElementById("add-issue").addEventListener("click", () => issueRow());
 
 document.getElementById("today-label").textContent = `${new Date().toLocaleDateString("en", { weekday: "short" })} · ${formatDate(localDateString())}`;
