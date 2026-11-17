@@ -1202,9 +1202,7 @@ function renderMasterSchedule() {
           const overallProgress = getEquipmentOverallProgress(workPackage, record, activityStatuses);
           const activityRows = record.timeline
             .map((item, sourceIndex) => ({ item, sourceIndex }))
-            .sort((a, b) => a.item.date.localeCompare(b.item.date)
-              || String(a.item.start || "").localeCompare(String(b.item.start || ""))
-              || a.sourceIndex - b.sourceIndex)
+
             .map(({ item, sourceIndex }) => {
               const activityKey = getActivityStatusKey(workPackage, record.equipmentTag, sourceIndex, item);
               const activityProgress = activityStatuses[activityKey] || { progress: 0, status: "not-started" };
