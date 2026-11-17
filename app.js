@@ -1209,7 +1209,10 @@ function renderMasterSchedule() {
         <thead><tr><th>No.</th><th class="equipment-tag-filter-header"><details class="equipment-tag-filter" data-equipment-tag-filter${equipmentTagFilterOpen ? " open" : ""}>
           <summary>Equipment tag</summary>
           <div class="equipment-tag-filter-menu">
-            <button class="button button-outline button-small" type="button" data-show-all-equipment-tags>Show all</button>
+            <div class="equipment-tag-filter-actions">
+              <button class="button button-outline button-small" type="button" data-select-all-equipment-tags>Select all</button>
+              <button class="button button-outline button-small" type="button" data-deselect-all-equipment-tags>Deselect all</button>
+            </div>
             <div class="equipment-tag-filter-options" role="group" aria-label="Equipment tags to display">${equipmentTagOptions}</div>
           </div>
         </details></th><th>Area / unit</th><th>Package / section</th><th>MNT start plan</th><th>MNT finish plan</th><th>Actual start</th><th>Actual finish</th><th>Overall progress</th><th>Daily activities</th><th>Actions</th></tr></thead>
@@ -2594,10 +2597,17 @@ document.querySelectorAll("[data-dashboard-package]").forEach(button => {
 document.getElementById("master-schedule-search").addEventListener("input", renderMasterSchedule);
 document.getElementById("add-equipment-button").addEventListener("click", () => openEquipmentEditor());
 document.getElementById("equipment-schedule-table").addEventListener("click", event => {
-  const showAllEquipmentTagsButton = event.target.closest("[data-show-all-equipment-tags]");
-  if (showAllEquipmentTagsButton) {
+  const selectAllEquipmentTagsButton = event.target.closest("[data-select-all-equipment-tags]");
+  const deselectAllEquipmentTagsButton = event.target.closest("[data-deselect-all-equipment-tags]");
+  if (selectAllEquipmentTagsButton || deselectAllEquipmentTagsButton) {
     const workPackage = normalizeWorkPackage(document.getElementById("overview-work-package").value);
-    hiddenEquipmentTagsByPackage.delete(workPackage);
+    if (selectAllEquipmentTagsButton) {
+      hiddenEquipmentTagsByPackage.delete(workPackage);
+    } else {
+      hiddenEquipmentTagsByPackage.set(workPackage, new Set(
+        getEquipmentRecords(workPackage).map(record => String(record.equipmentTag))
+      ));
+    }
     renderMasterSchedule();
     return;
   }
