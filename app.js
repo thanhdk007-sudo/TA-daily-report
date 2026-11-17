@@ -1232,8 +1232,8 @@ function renderMasterSchedule() {
             <td><input type="date" data-equipment-actual-date="actualFinish" data-equipment-tag="${escapeHtml(record.equipmentTag)}" data-saved-value="${escapeHtml(record.actualFinish || "")}" aria-label="Actual finish for ${escapeHtml(record.equipmentTag)}" value="${escapeHtml(record.actualFinish || "")}"></td>
             <td><strong class="equipment-overall-progress ${getEquipmentProgressClass(overallProgress)}" data-equipment-overall-progress>${overallProgress === null ? "—" : `${overallProgress.toFixed(1)}%`}</strong></td>
             <td><details class="equipment-activities" data-equipment-tag="${escapeHtml(record.equipmentTag)}"${expandedActivityTags.has(String(record.equipmentTag)) ? " open" : ""}><summary>${record.timeline.length} ${record.timeline.length === 1 ? "activity" : "activities"}</summary>
-              <button class="button button-outline button-small add-scheduled-activity" type="button" data-add-scheduled-activity>Add activity</button>
-              <div class="equipment-activities-list"><table><thead><tr>${activityHeaders}</tr></thead><tbody>${activityRows || emptyActivity}</tbody></table></div>
+                            <div class="equipment-activities-list"><table><thead><tr>${activityHeaders}</tr></thead><tbody>${activityRows || emptyActivity}</tbody></table></div>
+                            <button class="button button-outline button-small add-scheduled-activity" type="button" data-add-scheduled-activity>Add activity</button>
             </details></td>
             <td class="scheduled-equipment-actions"><button class="button button-outline button-small" type="button" data-edit-scheduled-equipment="${escapeHtml(record.equipmentTag)}">Edit</button>
               <button class="button button-outline button-small" type="button" data-hide-scheduled-equipment="${escapeHtml(record.equipmentTag)}">Delete</button></td>
