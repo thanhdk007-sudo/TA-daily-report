@@ -196,7 +196,8 @@ h1 { margin-bottom: 5px; color: var(--navy); font: 800 27px Manrope, sans-serif;
 .equipment-tag-filter > summary::-webkit-details-marker { display: none; }
 .equipment-tag-filter > summary::after { width: 0; height: 0; border-top: 4px solid currentColor; border-right: 3px solid transparent; border-left: 3px solid transparent; content: ""; }
 .equipment-tag-filter-menu { position: absolute; top: calc(100% + 6px); left: 0; z-index: 5; box-sizing: border-box; width: min(220px, 70vw); max-height: 260px; overflow: auto; padding: 8px; border: 1px solid #dfe6ec; border-radius: 6px; background: #fff; box-shadow: 0 4px 12px #18394b18; color: #40576b; text-transform: none; letter-spacing: normal; font-size: 9px; font-weight: 400; }
-.equipment-tag-filter-menu > button { min-height: 23px; margin-bottom: 6px; }
+.equipment-tag-filter-actions { display: flex; gap: 5px; margin-bottom: 6px; }
+.equipment-tag-filter-actions > button { min-height: 23px; }
 .equipment-tag-filter-options { display: grid; gap: 2px; }
 .equipment-tag-filter-option { display: flex; align-items: center; gap: 6px; padding: 3px 4px; border-radius: 3px; cursor: pointer; }
 .equipment-tag-filter-option input { margin: 0; }
