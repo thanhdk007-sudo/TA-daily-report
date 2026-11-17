@@ -10,6 +10,7 @@ const preparerNames = ["ThanhDK", "ThienHV", "TruongTX", "AnhTT", "DongBM", "Min
 const activitySections = ["2A", "2B", "2C", "3A", "2D", "2E", "5T", "0P", "CTU", "TFJ"];
 let toastTimer;
 const editingEquipmentTags = new Set();
+const hiddenEquipmentTagsByPackage = new Map();
 let editingReportId = null;
 const supabaseClient = window.location.protocol !== "file:" && window.supabase?.createClient(
   window.SUPABASE_CONFIG?.url || "",
@@ -1173,29 +1174,46 @@ function renderMasterSchedule() {
   ).join("");
   const activityStatuses = getActivityStatuses();
   addEquipmentButton.disabled = !workPackage;
-  const expandedActivityTags = equipmentTable.dataset.workPackage === workPackage
+  const sameWorkPackage = equipmentTable.dataset.workPackage === workPackage;
+  const expandedActivityTags = sameWorkPackage
     ? new Set([...equipmentTable.querySelectorAll(".equipment-activities[open]")]
       .map(details => details.dataset.equipmentTag))
     : new Set();
+  const equipmentTagFilterOpen = sameWorkPackage
+    && Boolean(equipmentTable.querySelector("[data-equipment-tag-filter][open]"));
+  const hiddenEquipmentTags = hiddenEquipmentTagsByPackage.get(workPackage) || new Set();
   if (!workPackage) {
     title.textContent = "Equipment schedule";
     caption.textContent = "Select a Work Package to browse its equipment and planned dates.";
     equipmentTable.innerHTML = '<p class="empty-note">Select a Work Package to view its schedule.</p>';
   } else {
     title.textContent = `${workPackage} equipment schedule`;
-    const filtered = records.filter(record => [
+    const filtered = records.filter(record => !hiddenEquipmentTags.has(String(record.equipmentTag)) && [
       record.equipmentTag, record.area, record.packageCode, record.unit, record.section,
       getPackageSectionLabel(record),
       record.packageNo, record.operationPackage,
       ...record.timeline.flatMap(item => [item.activity, getEquipmentActivityLabel(item.activity)])
     ].some(value => String(value ?? "").toLowerCase().includes(search)));
     caption.textContent = `${filtered.length} of ${records.length} equipment records · ${records.reduce((count, item) => count + item.timeline.length, 0).toLocaleString()} scheduled time slots`;
-    if (!filtered.length) {
-      equipmentTable.innerHTML = '<p class="empty-note">No equipment or activity matches that search.</p>';
+    if (!records.length) {
+      equipmentTable.innerHTML = '<p class="empty-note">No equipment is available for this Work Package.</p>';
     } else {
+      const equipmentTagOptions = records.map(record => {
+        const tag = String(record.equipmentTag);
+        return `<label class="equipment-tag-filter-option">
+          <input type="checkbox" data-equipment-tag-filter-option="${escapeHtml(tag)}"${hiddenEquipmentTags.has(tag) ? "" : " checked"}>
+          <span>${escapeHtml(tag)}</span>
+        </label>`;
+      }).join("");
       equipmentTable.innerHTML = `<table class="master-equipment-table">
-        <thead><tr><th>No.</th><th>Equipment tag</th><th>Area / unit</th><th>Package / section</th><th>MNT start plan</th><th>MNT finish plan</th><th>Actual start</th><th>Actual finish</th><th>Overall progress</th><th>Daily activities</th><th>Actions</th></tr></thead>
-        <tbody>${filtered.map(record => {
+        <thead><tr><th>No.</th><th class="equipment-tag-filter-header"><details class="equipment-tag-filter" data-equipment-tag-filter${equipmentTagFilterOpen ? " open" : ""}>
+          <summary>Equipment tag</summary>
+          <div class="equipment-tag-filter-menu">
+            <button class="button button-outline button-small" type="button" data-show-all-equipment-tags>Show all</button>
+            <div class="equipment-tag-filter-options" role="group" aria-label="Equipment tags to display">${equipmentTagOptions}</div>
+          </div>
+        </details></th><th>Area / unit</th><th>Package / section</th><th>MNT start plan</th><th>MNT finish plan</th><th>Actual start</th><th>Actual finish</th><th>Overall progress</th><th>Daily activities</th><th>Actions</th></tr></thead>
+        <tbody>${filtered.length ? filtered.map(record => {
           const sequence = records.indexOf(record) + 1;
           const areaUnit = [record.area, record.unit || record.section].filter(Boolean).join(" · ");
           const packageSection = getPackageSectionLabel(record);
@@ -1236,7 +1254,7 @@ function renderMasterSchedule() {
             <td class="scheduled-equipment-actions"><button class="button button-outline button-small" type="button" data-edit-scheduled-equipment="${escapeHtml(record.equipmentTag)}">Edit</button>
               <button class="button button-outline button-small" type="button" data-hide-scheduled-equipment="${escapeHtml(record.equipmentTag)}">Delete</button></td>
           </tr>`;
-        }).join("")}</tbody>
+        }).join("") : '<tr><td colspan="11" class="equipment-tag-filter-empty">No equipment matches the current search or tag selection.</td></tr>'}</tbody>
       </table>`;
     }
   }
@@ -2576,6 +2594,13 @@ document.querySelectorAll("[data-dashboard-package]").forEach(button => {
 document.getElementById("master-schedule-search").addEventListener("input", renderMasterSchedule);
 document.getElementById("add-equipment-button").addEventListener("click", () => openEquipmentEditor());
 document.getElementById("equipment-schedule-table").addEventListener("click", event => {
+  const showAllEquipmentTagsButton = event.target.closest("[data-show-all-equipment-tags]");
+  if (showAllEquipmentTagsButton) {
+    const workPackage = normalizeWorkPackage(document.getElementById("overview-work-package").value);
+    hiddenEquipmentTagsByPackage.delete(workPackage);
+    renderMasterSchedule();
+    return;
+  }
   const hideEquipmentButton = event.target.closest("[data-hide-scheduled-equipment]");
   if (hideEquipmentButton) {
     setEquipmentHidden(hideEquipmentButton.dataset.hideScheduledEquipment, true);
@@ -2614,7 +2639,21 @@ document.getElementById("equipment-editor").addEventListener("submit", saveSched
 document.getElementById("cancel-equipment-edit").addEventListener("click", () => {
   document.getElementById("equipment-editor").hidden = true;
 });
-document.getElementById("equipment-schedule-table").addEventListener("change", saveActivityStatus);
+document.getElementById("equipment-schedule-table").addEventListener("change", event => {
+  const equipmentTagCheckbox = event.target.closest("[data-equipment-tag-filter-option]");
+  if (!equipmentTagCheckbox) {
+    saveActivityStatus(event);
+    return;
+  }
+  const workPackage = normalizeWorkPackage(document.getElementById("overview-work-package").value);
+  const hiddenTags = new Set(hiddenEquipmentTagsByPackage.get(workPackage) || []);
+  const tag = equipmentTagCheckbox.dataset.equipmentTagFilterOption;
+  if (equipmentTagCheckbox.checked) hiddenTags.delete(tag);
+  else hiddenTags.add(tag);
+  if (hiddenTags.size) hiddenEquipmentTagsByPackage.set(workPackage, hiddenTags);
+  else hiddenEquipmentTagsByPackage.delete(workPackage);
+  renderMasterSchedule();
+});
 document.getElementById("actual-entry-date").value = localDateString();
 document.getElementById("actual-entry-date").addEventListener("change", renderActualEntryTable);
 document.getElementById("save-actual-progress").addEventListener("click", saveActualProgress);
