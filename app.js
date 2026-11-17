@@ -1408,7 +1408,7 @@ function addScheduledActivity(button) {
     </td>`;
   const emptyRow = tbody.querySelector("[data-empty-activity]");
   if (emptyRow) emptyRow.hidden = true;
-  tbody.prepend(row);
+  tbody.append(row);
   row.querySelector('[data-activity-field="date"]').focus();
 }
 
